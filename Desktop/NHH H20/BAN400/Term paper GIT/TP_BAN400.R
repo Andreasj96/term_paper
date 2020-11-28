@@ -7,9 +7,6 @@ library(tidyverse)
 library(dplyr)
 library(SentimentAnalysis)
 
-
-
-
 #reference
 #http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
 #http://cs229.stanford.edu/proj2011/GoelMittal-StockMarketPredictionUsingTwitterSentimentAnalysis.pdf
@@ -18,9 +15,8 @@ library(SentimentAnalysis)
 #https://longhowlam.shinyapps.io/TweetAnalyzer/
 
 
-
 #input window
-  #parameter : search key : ticker symbol or cashtag  
+  #parameter : search key : ticker symbol or cashtag  or company name
   #            number of tweets: 0~18000
   #            time period: last n days ?
   #            dictionary: harvard or lm 
@@ -55,9 +51,7 @@ tw_df<-
   mutate(created_day = date(created),
          created_time = time(created))
 
-
-
-#preprocess step
+#preprocess function
 pre_df <- function(df){
 df$text %>% 
   gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
@@ -70,12 +64,15 @@ df$text %>%
   trimws()                               #remove first space
 }
 
+#dtm funtion
+make_dtm <- function(df){
+  df$text%>%
+    DocumentTermMatrix(VCorpus(VectorSource()),
+                       control = list(stemming = TRUE )) #needed?
+}
 
-  
-#dtm
 
 #sentiment analysis 
-
 
 
 
