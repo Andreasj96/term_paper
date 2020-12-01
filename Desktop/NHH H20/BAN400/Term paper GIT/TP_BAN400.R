@@ -8,6 +8,8 @@ library(dplyr)
 library(SentimentAnalysis)
 library(ggplot2)
 library(wordcloud)
+library(edgar)
+library(edgarWebR)
 
 #reference
 #http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
@@ -72,18 +74,19 @@ ui <- fluidPage(theme = shinytheme("lumen"),
                   mainPanel(
                     tabsetPanel(
                       id = "output",
-                      tabPanel("twitter sentiment analysis", DT::dataTableOutput("mytable1")),
-                      tabPanel("10-k sentiment analysis", DT::dataTableOutput("mytable2")),
-                      tabPanel("trade advise", DT::dataTableOutput("mytable3"))
+                      tabPanel("Twitter sentiment analysis", DT::dataTableOutput("mytable1")),
+                      tabPanel("10-K sentiment analysis", DT::dataTableOutput("mytable2")),
+                      tabPanel("Stock", T::dataTableOutput("mytable3")),
+                      tabPanel("trade advise", DT::dataTableOutput("mytable4"))
                     ))
   )))
 
 
 
 #search key must be in this dataset
-ticker_symbol <- 
-  read.csv("us_stock_code.csv")%>%
-  select(code)
+ticker_symbol <- supported_tickers()%>%
+  filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )
+
 
 
 #extract data
@@ -205,10 +208,36 @@ tw_df%>%
   }
   
 
-#output-longterm sentiment analysis base on 10-k
+#output-longterm sentiment analysis base on 10-k 
+  
 
+  
+    get_cik <- function(df){
+      
+      web_front <-c("https://datafied.api.edgar-online.com/v2/companies?Appkey=7d405ce3e8ddb45e62da90edcc563c54&primarysymbols=")
+      web_ticker <-c("aapl")  #web_ticker <- tolower(c(input.search_key))
+      web_back <- c("&deleted=false&sortby=primarysymbol%20asc")
+      
+      readLines(paste(web_front,web_ticker,web_back))%>%
+      gsub(".*cik.+\"(\\d{10})\".+","\\1", .)%>%
+      gsub("^0+\"(\\d+)\"","\\1", . )  #??
+  
+      
+    
+    }
+    
+    getMgmtDisc(cik.no = 320193, filing.year = 2020)
+    getFilings(cik.no = 320193 , form.type = "10-K", filing.year = 2020, downl.permit = "n")
+    
+    full_text(
+      "apple",
+            type = "10-K",
+             reverse_order = FALSE,
+             count = 1,
+             stemming = TRUE,
+             cik = "0000320193",
+             from = "12/31/2019",
+             to = "12/31/2020"
+           )
 
-
-
-
-
+  
