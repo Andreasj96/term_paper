@@ -10,10 +10,15 @@ library(ggplot2)
 library(wordcloud)
 library(edgar)
 library(edgarWebR)
+library(riingo)
+library(anytime)
+library(tm)
+library(wordcloud)
 
 #reference
-#http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
-#http://cs229.stanford.edu/proj2011/GoelMittal-StockMarketPredictionUsingTwitterSentimentAnalysis.pdf
+#tweets sentiment analysis http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
+#tweets sentiment analysis http://cs229.stanford.edu/proj2011/GoelMittal-StockMarketPredictionUsingTwitterSentimentAnalysis.pdf
+#edgar api doc https://developer.edgar-online.com/docs 
 
 #example
 #https://longhowlam.shinyapps.io/TweetAnalyzer/
@@ -29,7 +34,7 @@ library(edgarWebR)
   #            dictionary: harvard or lm 
   #            uni_gram or bi_gram
   
-# Define UI
+#Define UI
 ui <- fluidPage(theme = shinytheme("lumen"),
                 titlePanel("Stock Trade Advice"),
                 
@@ -90,23 +95,61 @@ ticker_symbol <- supported_tickers()%>%
 
 
 #extract data
-tw_df<-
+
+token <- create_token(
+  app = "homework",
+  consumer_key = "",
+  consumer_secret = "",
+  access_token = "",
+  access_secret = "") 
+  #this is a private token
+  
+extra_tweets <-function(input.search_key){
   search_tweets(
-  input$search_key,             #search key 
-  n =input$number_tweets,       #number of tweets
+  input.search_key,             #search key 
+  n =1000,       #number of tweets
   type = "recent",
   include_rts = FALSE,          #exclude retweet
   geocode = NULL,
   max_id = NULL,
   parse = TRUE,
-  token = NULL,
+  token = token,
   retryonratelimit = FALSE,
   verbose = TRUE,
   lang = "en" )%>%
-  mutate(created_day = as.date(created),
-         created_time = as.time(created))%>%
-  select(-created)
+  mutate(created_day = as.date(created_at),
+         created_time = hour(created_at))%>%
+  select(-created_at)
+}
 
+test_data <- extra_tweets("$AAPL")
+
+
+#output-timelines - how many tweets retrived per day
+plot_tweets_dt <- function(df){
+  df <- df %>%
+    group_by(created_day, created_time)%>%
+    summarize(tw_count = n())
+  
+  plot <- df %>%
+    ggplot(aes(x=created_day,y = created_time, fill = tw_count))+
+    geom_point(alpha=0.5,show.legend = F)
+  
+  print(plot)
+  }
+
+plot_tweets_d <- function(df){
+  df <- df %>%
+    group_by(created_day)%>%
+    summarize(tw_count = n())
+  
+  plot <- df %>%
+    ggplot(aes(x=created_day,y = tw_count))+
+    geom_bar(alpha=0.8,show.legend = F)+
+    theme_classic()
+  
+  print(plot)
+}
 
 #preprocess function
 cleaning_tw_df <- function(df){
@@ -115,38 +158,29 @@ df$text %>%
   gsub("[[:digit:]]", "", .) %>%         #remove digits
   tolower() %>%                          #convert to lower case
   removeWords(., stopwords("en")) %>%    #remove standard stopwords
+  removeWords(., ticker_symbol)          #remove tickers
   gsub('\\b\\w{1,2}\\b','', .) %>%       #remove words of length 1-2
   gsub('\\b\\w{21,}\\b','', .) %>%       #remove words of length 21 or more
   gsub("\\s(\\s*)", " ", .) %>%          #remove excess whitespace
   trimws()                               #remove first space
 }
 
-#dtm funtion
-make_dtm <- function(df){
-  df$text%>%
-    DocumentTermMatrix(VCorpus(VectorSource()),
-                       control = list(stemming = TRUE )) #if needed
-}
-
-
-#output-timelines - how many tweets retrived per day
-
-tw_df %>% 
-  group_by(created_day, created_time)%>%
-  mutate(tw_count = n())%>%
-  ggplot(aes(x=created_day,y = created_time, fill = tw_count))+
-  geom_point()
-
-  #or
-tw_df%>%
-  group_by(created_day)%>%
-  mutate(tw_count = n())%>%
-  ggplot(aes(x=created_day,y = tw_count))+
-  geom_bar()
-
-#output-wordcloud words appeared most frequently agmong tweets retrived
-
-
+##output-wordcloud words appeared most frequently agmong tweets retrived
+make_wordcloud<- function(df){
+    dtm <- DocumentTermMatrix(Corpus(VectorSource(df)),
+                       control = list(stemming = T,
+                                      bounds = list(global = c(1,3)))) 
+    dtm.matrix<- as.matrix(dtm)
+    
+    dtm.df <- as.data.frame(dtm.matrix)
+    
+    x <- colSums(dtm.df)
+    
+    wordcloud(words = names(x),
+              freq = x,
+              min.freq =5)
+    
+    }
 
 
 #output-shortterm sentiment analysis base on twitter 
@@ -212,32 +246,19 @@ tw_df%>%
   
 
   
-    get_cik <- function(df){
+  get_cik <- function(df){
       
-      web_front <-c("https://datafied.api.edgar-online.com/v2/companies?Appkey=7d405ce3e8ddb45e62da90edcc563c54&primarysymbols=")
-      web_ticker <-c("aapl")  #web_ticker <- tolower(c(input.search_key))
-      web_back <- c("&deleted=false&sortby=primarysymbol%20asc")
+      cik_web_front <-c("https://datafied.api.edgar-online.com/v2/companies?Appkey=7d405ce3e8ddb45e62da90edcc563c54&primarysymbols=")
+      cik_web_ticker <-c("aapl")  #web_ticker <- tolower(df)
+      cik_web_back <- c("&deleted=false&sortby=primarysymbol%20asc")
       
-      readLines(paste(web_front,web_ticker,web_back))%>%
-      gsub(".*cik.+\"(\\d{10})\".+","\\1", .)%>%
-      gsub("^0+\"(\\d+)\"","\\1", . )  #??
+      readLines(paste(cik_web_front,cik_web_ticker,cik_web_back))%>%
+      gsub(".*cik.+\"(\\d{10})\".+","\\1", .)
   
-      
-    
     }
     
     getMgmtDisc(cik.no = 320193, filing.year = 2020)
     getFilings(cik.no = 320193 , form.type = "10-K", filing.year = 2020, downl.permit = "n")
     
-    full_text(
-      "apple",
-            type = "10-K",
-             reverse_order = FALSE,
-             count = 1,
-             stemming = TRUE,
-             cik = "0000320193",
-             from = "12/31/2019",
-             to = "12/31/2020"
-           )
-
+    readLines("https://datafied.api.edgar-online.com/v2/companies?primarysymbols=aapl&appkey={7d405ce3e8ddb45e62da90edcc563c54}")
   
