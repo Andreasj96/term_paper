@@ -90,11 +90,16 @@ ui <- fluidPage(theme = shinytheme("lumen"),
 
 #search key must be in this dataset
 ticker_symbol <- supported_tickers()%>%
-  filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )
+  filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )%>%
+  select(ticker)%>%
+  as.matrix()%>%
+  as.vector()%>%
+  paste0("$", .)%>%
+  tolower()
 
 
 
-#extract data
+#extract data 
 
 token <- create_token(
   app = "homework",
@@ -105,11 +110,15 @@ token <- create_token(
   #this is a private token
   
 extra_tweets <-function(input.search_key){
+  usefual_search_key <- c( paste("\"$",toupper(input.search_key),"\""),
+                           paste("\"$",tolower(input.search_key),"\""))
+  #handle different format                
+  
   search_tweets(
-  input.search_key,             #search key 
-  n =1000,       #number of tweets
-  type = "recent",
-  include_rts = FALSE,          #exclude retweet
+  usefual_search_key,                          #search key 
+  n =18000,                                    #number of tweets
+  type = "recent",                             #type of tweets
+  include_rts = FALSE,                         #exclude retweet
   geocode = NULL,
   max_id = NULL,
   parse = TRUE,
@@ -117,12 +126,11 @@ extra_tweets <-function(input.search_key){
   retryonratelimit = FALSE,
   verbose = TRUE,
   lang = "en" )%>%
-  mutate(created_day = as.date(created_at),
+  mutate(created_day = as.date(created_at),    #transform date and time
          created_time = hour(created_at))%>%
-  select(-created_at)
+  select(-created_at)                          #delete column created_at
 }
 
-test_data <- extra_tweets("$AAPL")
 
 
 #output-timelines - how many tweets retrived per day
@@ -135,7 +143,7 @@ plot_tweets_dt <- function(df){
     ggplot(aes(x=created_day,y = created_time, fill = tw_count))+
     geom_point(alpha=0.5,show.legend = F)
   
-  print(plot)
+  print(plot) # bubble plot based on created day and time
   }
 
 plot_tweets_d <- function(df){
@@ -153,40 +161,74 @@ plot_tweets_d <- function(df){
 
 #preprocess function
 cleaning_tw_df <- function(df){
-df$text %>% 
-  gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
-  gsub("[[:digit:]]", "", .) %>%         #remove digits
-  tolower() %>%                          #convert to lower case
-  removeWords(., stopwords("en")) %>%    #remove standard stopwords
-  removeWords(., ticker_symbol)          #remove tickers
-  gsub('\\b\\w{1,2}\\b','', .) %>%       #remove words of length 1-2
-  gsub('\\b\\w{21,}\\b','', .) %>%       #remove words of length 21 or more
-  gsub("\\s(\\s*)", " ", .) %>%          #remove excess whitespace
-  trimws()                               #remove first space
+  extra_hashtag <- 
+    DocumentTermMatrix(Corpus(VectorSource(df$hashtags)),
+                       control = list( removePunctuation = T,
+                                       stripWhitespace = T,
+                                       tolower = T ))%>%
+    as.matrix()%>%
+    as.data.frame()%>%
+    colnames()
+  
+  extra_ticker <- 
+    DocumentTermMatrix(Corpus(VectorSource(df$symbols)),
+                       control = list( removePunctuation = T,
+                                       stripWhitespace = T,
+                                       tolower = T ))%>%
+    as.matrix()%>%
+    as.data.frame()%>%
+    colnames()
+  
+ cleaned_tw <- 
+   df$text %>% 
+   gsub("\n"," ", .) %>%                  #remove \n
+                                          #remove urls
+   gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
+   tolower() %>%                          #convert to lower case 
+   gsub("amp"," ", .)%>%                  #remove amp 
+   removeWords(.,extra_hashtag)%>%        #remove hashtags
+   removeWords(.,extra_ticker)%>%         #remove tickers symbols
+   gsub("[[:digit:]]", "", .) %>%         #remove digits
+   removeWords(., stopwords("en")) %>%    #remove standard stopwords
+   gsub('\\b\\w{1,2}\\b','', .) %>%       #remove words of length 1-2
+   gsub('\\b\\w{21,}\\b','', .) %>%       #remove words of length 21 or more
+   gsub("\\s(\\s*)", " ", .) %>%          #remove excess whitespace
+   trimws()                               #remove first space
+ 
+ print(cleaned_tw)
 }
 
-##output-wordcloud words appeared most frequently agmong tweets retrived
+cleaned_tw <- cleaning_tw_df(tw_df)
+
+
+
+
+
+#output-wordcloud words appeared most frequently agmong tweets retrived
 make_wordcloud<- function(df){
-    dtm <- DocumentTermMatrix(Corpus(VectorSource(df)),
+    x <- 
+      DocumentTermMatrix(Corpus(VectorSource(df)),
                        control = list(stemming = T,
-                                      bounds = list(global = c(1,3)))) 
-    dtm.matrix<- as.matrix(dtm)
+                                      bounds = list(global = c(5,500)))) %>%
+      as.matrix()%>%
+      as.data.frame()%>%
+      colSums()
     
-    dtm.df <- as.data.frame(dtm.matrix)
-    
-    x <- colSums(dtm.df)
-    
-    wordcloud(words = names(x),
+    plot_wordcloud <-
+      wordcloud(words = names(x),
               freq = x,
-              min.freq =5)
+              min.freq =20,
+              max.words = 50, 
+              colors = brewer.pal(5, "Set1"))
+    print(plot_wordcloud)
     
-    }
+}
 
 
 #output-shortterm sentiment analysis base on twitter 
   #sentiment analysis base on different dictionary
   sentiment_analysis <- function(df){
-    if(input$dictionary == "Harvard"){
+    if(input.dictionary == "Harvard"){
     harvard_sentiment(df)
   }else{
     lm_sentiment(df)
@@ -195,6 +237,7 @@ make_wordcloud<- function(df){
 
   # harvard sentiment function
   harvard_sentiment <- funtion(df){
+    
     if(unique(df$created_day) > 1){
       df %>%
         mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
@@ -261,4 +304,9 @@ make_wordcloud<- function(df){
     getFilings(cik.no = 320193 , form.type = "10-K", filing.year = 2020, downl.permit = "n")
     
     readLines("https://datafied.api.edgar-online.com/v2/companies?primarysymbols=aapl&appkey={7d405ce3e8ddb45e62da90edcc563c54}")
-  
+ 
+    
+    
+    
+    
+     
