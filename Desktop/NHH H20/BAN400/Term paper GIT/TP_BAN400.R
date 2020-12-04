@@ -201,11 +201,8 @@ cleaning_tw_df <- function(df){
 cleaned_tw <- cleaning_tw_df(tw_df)
 
 
-
-
-
 #output-wordcloud words appeared most frequently agmong tweets retrived
-make_wordcloud<- function(df){
+make_tweet_wordcloud<- function(df){
     x <- 
       DocumentTermMatrix(Corpus(VectorSource(df)),
                        control = list(stemming = T,
@@ -227,32 +224,31 @@ make_wordcloud<- function(df){
 
 #output-shortterm sentiment analysis base on twitter 
   #sentiment analysis base on different dictionary
-  sentiment_analysis <- function(df){
+  daily_sentiment_analysis <- function(df){
     if(input.dictionary == "Harvard"){
-    harvard_sentiment(df)
+    daily_harvard_sentiment(df)
   }else{
-    lm_sentiment(df)
+    daily_lm_sentiment(df)
     }
   }
 
   # harvard sentiment function
-  harvard_sentiment <- funtion(df){
+  daily_harvard_sentiment <- funtion(df){
     
-    if(unique(df$created_day) > 1){
-      df %>%
-        mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
-        groupby(created_day)%>%
-        summarize( daily_harvard_score = mean (harvard_score))%>%
+    daily_score_H <- df %>%
+      mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
+      groupby(created_day)%>%
+      summarize( daily_harvard_score = mean (harvard_score))
+    
+    if(unique(daily_score_H$created_day) > 1){
+      daily_score_H%>%
         ggplot(aes(x= created_day, y= daily_harvard_score))+
         geom_point(show.legend = F, col = "red")+
         geom_line()+
         scale_x_continuous(name="Date", limits=c(min(created_day)+1, max(created_day)))
         geom_smooth(alpha = 0, method = "lm")
     }else{
-      df %>%
-        mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
-        groupby(created_day)%>%
-        summarize( daily_harvard_score = mean (harvard_score))%>%
+      daily_score_H%>%
         ggplot(aes(x= created_day, y= daily_harvard_score))+
         geom_point(show.legend = F, col = "red")+
         geom_line()+
@@ -261,22 +257,21 @@ make_wordcloud<- function(df){
   }
   
   # LM sentiment function
-  lm_sentiment <-  funtion(df){
+  daily_lm_sentiment <-  funtion(df){
+    daily_score_LM <- df %>%
+      mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
+      groupby(created_day)%>%
+      summarize( daily_lm_score = mean (lm_score))
+    
     if(unique(df$created_day) > 1){
-      df %>%
-        mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
-        groupby(created_day)%>%
-        summarize( daily_lm_score = mean (lm_score))%>%
+      daily_score_LM%>%
         ggplot(aes(x= created_day, y= daily_lm_score))+
         geom_point(show.legend = F, col = "red")+
         geom_line()+
         scale_x_continuous(name="Date", limits=c(min(created_day)+1, max(created_day)))
         geom_smooth(alpha = 0, method = "lm")
     }else{
-      df %>%
-        mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
-        groupby(created_day)%>%
-        summarize( daily_lm_score = mean (lm_score))%>%
+      daily_score_LM%>%
         ggplot(aes(x= created_day, y= daily_lm_score))+
         geom_point(show.legend = F, col = "red")+
         geom_line()++
@@ -286,27 +281,79 @@ make_wordcloud<- function(df){
   
 
 #output-longterm sentiment analysis base on 10-k 
+  #get MDA part of the lastest 10-k
+  get_MDA <- function(input.search_key){
+    useful_search_key <- toupper(input.search_key)
+    
+    test_10k <- 
+      company_filings(
+        useful_search_key,
+        ownership = FALSE,
+        type = "10-K",
+        before = "20201231",
+        count = 10
+      )%>%
+      filter(year(filing_date ) == 2020)%>%
+      select(href)%>%
+      as.matrix()%>%
+      as.vector()%>%
+      filing_documents()%>%
+      filter(type == "10-K")%>%
+      select(href)%>%
+      as.matrix()%>%
+      as.vector()%>%
+      parse_filing()%>%
+      filter(item.name == "Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations")
+  }
+  
+  test_10k <- get_MDA("aapl")
+
+  #get cleaned MDA
+  get_cleaned_MDA <- function(df){
+    customed_word <- c("company", "10-K", "form", "FORM", "item", "ITEM")
+    
+    df%>%
+      select(text)%>%
+      as.matrix()%>%
+      as.vector()%>%
+      paste(collapse = " ")%>%
+      gsub("[[:punct:]]", " ", .) %>% 
+      gsub("[[:digit:]]", "", .) %>% 
+      tolower() %>% 
+      removeWords(., stopwords("en")) %>% 
+      removeWords(.,customed_word)%>%
+      gsub('\\b\\w{1,2}\\b','', .) %>% 
+      gsub("\\s(\\s*)", " ", .) %>%
+      trimws()
+  }
+  
+  test_cleaned_MDA <- get_cleaned_MDA(test_10k)
+  #make a wordcloud
+  make_MDA_wordcloud<- function(df){
+    x <- 
+      DocumentTermMatrix(Corpus(VectorSource(df)),
+                         control = list(stemming = F,
+                                        bounds = list(global = c(1,100)))) %>%
+      as.matrix()%>%
+      as.data.frame()%>%
+      colSums()
+    
+    plot_wordcloud <-
+      wordcloud(words = names(x),
+                freq = x,
+                min.freq =5,
+                max.words = 50, 
+                colors = brewer.pal(5, "Set1"))
+    print(plot_wordcloud)
+    
+  }
+  
+  make_MDA_wordcloud(test_cleaned_MDA)
+  
+  #sentiment analysis based on LM
+  MDA_sentiment_LM <- analyzeSentiment(test_cleaned_MDA)$SentimentLM
+  
   
 
   
-  get_cik <- function(df){
-      
-      cik_web_front <-c("https://datafied.api.edgar-online.com/v2/companies?Appkey=7d405ce3e8ddb45e62da90edcc563c54&primarysymbols=")
-      cik_web_ticker <-c("aapl")  #web_ticker <- tolower(df)
-      cik_web_back <- c("&deleted=false&sortby=primarysymbol%20asc")
-      
-      readLines(paste(cik_web_front,cik_web_ticker,cik_web_back))%>%
-      gsub(".*cik.+\"(\\d{10})\".+","\\1", .)
   
-    }
-    
-    getMgmtDisc(cik.no = 320193, filing.year = 2020)
-    getFilings(cik.no = 320193 , form.type = "10-K", filing.year = 2020, downl.permit = "n")
-    
-    readLines("https://datafied.api.edgar-online.com/v2/companies?primarysymbols=aapl&appkey={7d405ce3e8ddb45e62da90edcc563c54}")
- 
-    
-    
-    
-    
-     
