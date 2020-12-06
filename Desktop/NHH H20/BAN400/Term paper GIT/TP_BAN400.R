@@ -16,26 +16,26 @@ library(tm)
 library(wordcloud)
 library(rlist)
 
-#reference
+#Reference
 #tweets sentiment analysis http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
 #tweets sentiment analysis http://cs229.stanford.edu/proj2011/GoelMittal-StockMarketPredictionUsingTwitterSentimentAnalysis.pdf
 #edgar api doc https://developer.edgar-online.com/docs 
 
-#example
+#Example
 #https://longhowlam.shinyapps.io/TweetAnalyzer/
 
 
-#input window
+#Input window
   #parameter : search key : ticker symbol or cashtag  or company name
   #            average purchase price:  numbe
   #            total shares :  number
   #            number of tweets: 0~18000
   #            dictionary: harvard or lm 
-  #            uni_gram or bi_gram ??
-  #            time period: last n days ??
+
   
-#Define UI
+#Define UI###############################################################################################
 ui <- fluidPage(theme = shinytheme("lumen"),
+                
                 titlePanel("Stock Trade Advice"),
                 
                 sidebarLayout(
@@ -43,7 +43,7 @@ ui <- fluidPage(theme = shinytheme("lumen"),
                     
                     # enter search key
                     textInput(inputId = "search_key", 
-                              label = strong("Search key"),
+                              label = "Search key",
                               value = "Enter ticker symbol"),
                                 # search key must be a ticker symbol
                     
@@ -52,71 +52,127 @@ ui <- fluidPage(theme = shinytheme("lumen"),
                     
                     #display only if the chcekbox"hold" is checked
                     conditionalPanel(condition = "input.hold == true",
-                                     numericInput("shares", label = h3("Shares"), value = 100),
-                                     numericInput("price", label = h3("Average purchase price"), value = 100)),
+                                     numericInput("shares", label = "Shares", value = 100),
+                                     numericInput("price", label = "Average purchase price", value = 100)),
                     
                     
                     # select number of tweets to be retrived
-                    sliderInput("number_tweets", label = h3("number of tweets to be retrived"), 
-                                min = 500, max = 18000, value = 10000), 
+                    sliderInput(inputId = "number_tweets", label = "Number of tweets to be retrived", 
+                                min = 500, max = 18000, value = 18000), 
                                 #min should be a reasonable value
 
                     #select sentiment dictionary
-                    selectInput(inputId = "dictionary", label = h3("Sentiment dictionary"),
+                    selectInput(inputId = "dictionary", label = "Sentiment dictionary",
                                 choices = c("Harvard","LM"),
                                 selected = "Harvard"),
-                    
-                    #select sentiment method
-                    #selectInput(inputId = "method", label = h3("Sentiment method"),
-                     #           choices = c("Uni_gram","Bi_gram"),
-                    #            selected = "Uni_gram")
-                    
-                   
-                    #)
-                  #),
                   
                     # Output: Description, lineplot, and reference
                   mainPanel(
                     tabsetPanel(
+                      type = "tabs",
                       id = "output",
-                      tabPanel("Twitter sentiment analysis", DT::dataTableOutput("mytable1")),
-                      tabPanel("10-K sentiment analysis", DT::dataTableOutput("mytable2")),
-                      tabPanel("Stock", T::dataTableOutput("mytable3")),
-                      tabPanel("trade advise", DT::dataTableOutput("mytable4"))
-                    ))
-  )))
+                      tabPanel("Twitter sentiment analysis", 
+                               plotOutput("tweets_number_plot"),
+                               plotOutput("tweets_wordcloud_plot"),
+                               plotOutput("tweets_sentiment_plot")),
+                      tabPanel("10-K sentiment analysis", 
+                               plotOutput("MDA_wordcloud_plot"),
+                               plotOutput("MDA_sentiment_plot")),
+                      tabPanel("Stock", plotOutput("mytable3")),
+                      tabPanel("Trade advises", textOutput("mytable4")
+                               )
+                      )
+                    )
+                  )
+                  )
+                )
 
 
 
-#search key must be in this dataset
+#Define server(not finished)############################################################################
+  server <- function(input, output) {
+    
+    # Subset data
+      # data extracting and search_key must be a vaild ticker symbol
+      extract_tweets <- reactive({
+        req(input$search_key)
+        validate(need(toupper(input$search_key) %in% ticker_symbol),
+                      "Error: Please provide a vaild search key.")
+        extract_tweet(input$search_key)
+      })
+      
+      cleaned_tweets <- cleaning_tw_df(extract_tweets)
+      
+      get_MDA <- get_MDA(input$search_key)
+      
+      get_cleaned_MDA <- get_cleaned_MDA(get_MDA)
+      
+      
+    # plot-how many tweets retrived per day
+    output$tweet_number_plot <- renderPlot({
+      plot_tweets_dt(extract_tweets)
+    })
+    
+    # plot-wordcloud
+    output$tweets_wordcloud_plot <- renderPlot({
+       make_tweet_wordcloud(cleaned_tweets)
+    })
+    
+    # plot-tweets sentiment
+    output$tweets_sentiment_plot <- renderPlot({
+      tweet_sentiment_analysis(cleaned_tweets)
+    })
+    
+    # plot-10kMDA wordcloud
+    output$MDA_wordcloud_plot <- renderPlot({
+      make_MDA_wordcloud(get_cleaned_MDA)
+    })
+    
+    # plot-10kMDA sentiment
+    output$MDA_wordcloud_plot <- renderPlot({
+      MDA_sentiment_LM(get_cleaned_MDA)
+    })
+    
+    
+    }
+
+
+##########################################################################################################
+
+
+#Define all needed functions##############################################################################
+
+#Search key must be in this dataset
+  vaild_ticker_symbol <- function(df){
+  
   ticker_symbol <- supported_tickers()%>%
     filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )%>%
     select(ticker)%>%
     as.matrix()%>%
-    as.vector()%>%
-    paste0("$", .)%>%
-    tolower()
-
-
-
-#extract data 
-
-  token <- create_token(
-    app = "homework",
-    consumer_key = "",
-    consumer_secret = "",
-    access_token = "",
-    access_secret = "") 
-    #this is a private token expired on 20210102
+    as.vector()
   
-  extract_tweets <-function(input.search_key){
-    usefual_search_key <- c( paste("\"$",toupper(input.search_key),"\""),
-                             paste("\"$",tolower(input.search_key),"\""))
-    #handle different format                
+  print(toupper(df) %in% ticker_symbol)
+
+  }
+
+#Extract data 
+  extract_tweet <-function(df){
+    
+    token <- create_token(
+      app = "homework",
+      consumer_key = "",
+      consumer_secret = "",
+      access_token = "",
+      access_secret = "") 
+    #this is a private token expired on 20210102
+    
+    usefual_search_key <- c( paste("\"$",toupper(df),"\""),
+                             paste("\"$",tolower(df),"\""))
+    #handle different format of input$search_key               
     
     search_tweets(
     usefual_search_key,                          #search key 
-    n =18000,                                    #number of tweets  shall be input.number_tweets
+    n = input$number_tweets,                      #number of tweets  shall be input.number_tweets
     type = "recent",                             #type of tweets
     include_rts = FALSE,                         #exclude retweet
     geocode = NULL,
@@ -126,15 +182,15 @@ ui <- fluidPage(theme = shinytheme("lumen"),
     retryonratelimit = FALSE,
     verbose = TRUE,
     lang = "en" )%>%
-    mutate(created_day = as.date(created_at),    #transform date and time
-           created_time = hour(created_at),
-           created_datetime = round_date(as.POSIXct('2019-9-28 12:23:9'),'hour'))%>%
+    mutate(created_day = as.date(created_at),    #created day
+           created_time = hour(created_at),      #created time
+           created_datetime = 
+             floor_date(created_at,'hour'))%>%   #created day&time
     select(-created_at)                          #delete column created_at
   }
 
-
-#output-timelines - how many tweets retrived per day
-  plot_tweets_dt <- function(df){
+  #output-timelines - how many tweets retrived per day
+  plot_tweet_dt <- function(df){
     df <- df %>%
       group_by(created_day, created_time)%>%
       summarize(tw_count = n())
@@ -144,9 +200,9 @@ ui <- fluidPage(theme = shinytheme("lumen"),
       geom_point(alpha=0.5,show.legend = F)
     
     print(plot) # bubble plot based on created day and time
-    }
+  }
   
-  plot_tweets_d <- function(df){
+  plot_tweet_d <- function(df){
     df <- df %>%
       group_by(created_day)%>%
       summarize(tw_count = n())
@@ -159,7 +215,7 @@ ui <- fluidPage(theme = shinytheme("lumen"),
     print(plot)
   }
 
-#preprocess function
+#Preprocess function
   cleaning_tw_df <- function(df){
   extract_hashtag <- 
     DocumentTermMatrix(Corpus(VectorSource(df$hashtags)),
@@ -221,8 +277,7 @@ ui <- fluidPage(theme = shinytheme("lumen"),
  
 }
 
-
-#output-wordcloud words appeared most frequently agmong tweets retrived
+#Output-wordcloud words appeared most frequently agmong tweets retrived
   make_tweet_wordcloud<- function(df){
     x <- 
       DocumentTermMatrix(Corpus(VectorSource(df$text)),
@@ -243,8 +298,16 @@ ui <- fluidPage(theme = shinytheme("lumen"),
 }
 
 
-
-#output-shortterm sentiment analysis base on twitter 
+#Output-short term sentiment analysis base on twitter
+  #sentiment analysis
+  tweet_sentiment_analysis <- function(df){
+    if(input$group == "Daily"){
+      daily_sentiment_analysis(df)
+    }else{hourly_sentiment_analysis(df)
+      }
+  }
+  
+  
   #daily sentiment analysis base on different dictionary
   daily_sentiment_analysis <- function(df){
     if(input.dictionary == "Harvard"){
@@ -286,8 +349,6 @@ ui <- fluidPage(theme = shinytheme("lumen"),
           }
         }
     }
-    
-    daily_harvard_sentiment(t1)
     
     # LM sentiment function
     daily_lm_sentiment <-  function(df){
@@ -399,20 +460,20 @@ ui <- fluidPage(theme = shinytheme("lumen"),
       }
     }
 
-#output-longterm sentiment analysis base on 10-k 
+#Output-longterm sentiment analysis base on 10-k 
   #get MDA part of the lastest 10-k
-  get_MDA <- function(input.search_key){
-    useful_search_key <- toupper(input.search_key)
+  get_MDA <- function(df){
+    useful_search_key <- toupper(df)
     
     test_10k <- 
       company_filings(
         useful_search_key,
         ownership = FALSE,
         type = "10-K",
-        before = "20201231",
+        before = Sys.Date(),
         count = 10
       )%>%
-      filter(year(filing_date ) == 2020)%>%
+      filter(year(filing_date ) == year(Sys.Date()))%>%
       select(href)%>%
       as.matrix()%>%
       as.vector()%>%
@@ -465,7 +526,9 @@ ui <- fluidPage(theme = shinytheme("lumen"),
   }
   
   #sentiment analysis based on LM
-  MDA_sentiment_LM <- analyzeSentiment(test_cleaned_MDA)$SentimentLM
+  MDA_sentiment_LM <- function(df){
+    analyzeSentiment(df)$SentimentLM
+  }
   
   
 
