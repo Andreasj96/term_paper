@@ -35,7 +35,7 @@ library(rlist)
 
 
 #Define UI###############################################################################################
-ui <- fluidPage( titlePanel("Stock Trade Advice"),
+ui <- fluidPage( titlePanel("Stock Trade Advises"),
                  
                  sidebarLayout(
                    sidebarPanel(
@@ -51,22 +51,22 @@ ui <- fluidPage( titlePanel("Stock Trade Advice"),
                      
                      #display only if the chcekbox"hold" is checked
                      conditionalPanel(condition = "input.hold === true",
-                                      numericInput("shares", label = "Shares", value = 100),
+                                      numericInput("shares", label = "Holding shares", value = 100),
                                       numericInput("price", label = "Average purchase price", value = 100)),
                      
                      
                      # select number of tweets to be retrived
                      sliderInput(inputId = "number_tweets", label = "Number of tweets to be retrived", 
-                                 min = 500, max = 18000, value = 18000), 
+                                 min = 500, max = 18000, value = 1000, step = 500), 
                      #min should be a reasonable value
                      
                      #select sentiment dictionary
-                     selectInput(inputId = "dictionary", label = "Sentiment dictionary",
+                     selectInput(inputId = "dictionary", label = "Sentiment dictionary for tweets",
                                  choices = c("Harvard","LM"),
                                  selected = "Harvard"),
                      
                      #select sentiment analysis frequent?
-                     selectInput(inputId = "frequent", label = "Sentiment analysis frequent",
+                     selectInput(inputId = "frequent", label = "Sentiment analysis frequent for tweets",
                                  choices = c("Daily","Hourly"),
                                  selected = "Hourly")
                      
@@ -85,9 +85,9 @@ ui <- fluidPage( titlePanel("Stock Trade Advice"),
                                 plotOutput("tweets_sentiment_plot")),
                        tabPanel("10-K sentiment analysis", 
                                 plotOutput("MDA_wordcloud_plot"),
-                                plotOutput("MDA_sentiment_plot"))
-                       # tabPanel("Stock", plotOutput("mytable3")),
-                       #  tabPanel("Trade advises", textOutput("mytable4")
+                                tableOutput("MDA_sentiment_plot")),
+                       tabPanel("Real_time stock price", plotOutput("stock_price")),
+                       tabPanel("Trade advises", textOutput("trade_advises"))
                      )
                    )
                  )
@@ -102,44 +102,51 @@ server <- function(input, output) {
   
   # Subset data
   # data extracting and search_key must be a vaild ticker symbol
-  extract_tweets <-reactive({
-    req(input$search_key)
-    validate(need(toupper(input$search_key) %in% ticker_symbol),
-             "Error: Please provide a vaild search key.")
-    extract_tweet(input$search_key)
+  
+  get_cleaned_MDAs <- reactive({
+    get_cleaned_MDA(get_MDA(input$search_key))
   })
-  
-  
-  cleaned_tweets <- cleaning_tw_df(extract_tweets)
-  
-  get_MDA <- get_MDA(input$search_key)
-  
-  get_cleaned_MDA <- get_cleaned_MDA(get_MDA)
   
   
   # plot-how many tweets retrived per day
+  
+  extract_tweets <-reactive({
+    req(input$search_key)
+    validate(need(toupper(input$search_key) %in% ticker_symbol),
+             "Error: Please enter a vaild search key.")
+    extract_tweet(input$search_key)
+  })
+  
   output$tweet_number_plot <- renderPlot({
-    plot_tweets_dt(extract_tweets)
+    plot_tweets_dt(extract_tweets())
   })
   
   # plot-wordcloud
+  cleaned_tweets <- reactive({
+    cleaning_tw_df(extract_tweets())
+  })
+  
+  input_number_tweets <- reactive({
+    input$number_tweets
+  })
+  
   output$tweets_wordcloud_plot <- renderPlot({
-    make_tweet_wordcloud(cleaned_tweets)
+    make_tweet_wordcloud(cleaned_tweets())
   })
   
   # plot-tweets sentiment
   output$tweets_sentiment_plot <- renderPlot({
-    tweet_sentiment_analysis(cleaned_tweets)
+    tweet_sentiment_analysis(cleaned_tweets())
   })
   
   # plot-10kMDA wordcloud
   output$MDA_wordcloud_plot <- renderPlot({
-    make_MDA_wordcloud(get_cleaned_MDA)
+    make_MDA_wordcloud(get_cleaned_MDAs())
   })
   
   # plot-10kMDA sentiment
-  output$MDA_wordcloud_plot <- renderPlot({
-    MDA_sentiment_LM(get_cleaned_MDA)
+  output$MDA_wordcloud_plot <- renderTable({
+    MDA_sentiment_LM(get_cleaned_MDAs())
   })
   
   
@@ -181,7 +188,7 @@ extract_tweet <-function(df){
   
   search_tweets(
     usefual_search_key,                          #search key 
-    n =input$number_tweets,                      #number of tweets  shall be input.number_tweets
+    n =input$number_tweets,                      #number of tweets  shall be input$number_tweets
     type = "recent",                             #type of tweets
     include_rts = FALSE,                         #exclude retweet
     geocode = NULL,
@@ -262,7 +269,7 @@ cleaning_tw_df <- function(df){
   cleaned_text <- 
     df$text %>% 
     removeWords(.,extract_url1)%>%         #remove url1
-    removeWords(.,extract_url1)%>%         #remove url2
+    removeWords(.,extract_url2)%>%         #remove url2
     gsub("U0001.{4}", " ", .)%>%           #doesnot work!!!
     gsub("U0001", " ", .)%>%               #doesnot work!!!
     gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
@@ -293,7 +300,7 @@ make_tweet_wordcloud<- function(df){
   x <- 
     DocumentTermMatrix(Corpus(VectorSource(df$text)),
                        control = list(stemming = T,
-                                      bounds = list(global = c(5,500)))) %>%   #500 = input.number_tweets
+                                      bounds = list(global = c(5,input_number_tweets())))) %>%   #500 = input.number_tweets
     as.matrix()%>%
     as.data.frame()%>%
     colSums()
