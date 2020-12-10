@@ -47,7 +47,7 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                      # search key must be a ticker symbol
                      
                      #check if the user hold ths stock
-                     checkboxInput("hold", label = "Hold this stock", value = F),
+                     checkboxInput("hold", label = "Shareholding", value = F),
                      
                      #display only if the chcekbox"hold" is checked
                      conditionalPanel(condition = "input.hold === true",
@@ -85,7 +85,7 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                                 plotOutput("tweets_sentiment_plot")),
                        tabPanel("10-K sentiment analysis", 
                                 plotOutput("MDA_wordcloud_plot"),
-                                tableOutput("MDA_sentiment_plot")),
+                                tableOutput("MDA_sentiment_table")),
                        tabPanel("Real_time stock price", plotOutput("stock_price")),
                        tabPanel("Trade advises", textOutput("trade_advises"))
                      )
@@ -102,14 +102,6 @@ server <- function(input, output) {
   
   # Subset data
   # data extracting and search_key must be a vaild ticker symbol
-  
-  get_cleaned_MDAs <- reactive({
-    get_cleaned_MDA(get_MDA(input$search_key))
-  })
-  
-  
-  # plot-how many tweets retrived per day
-  
   extract_tweets <-reactive({
     req(input$search_key)
     validate(need(toupper(input$search_key) %in% ticker_symbol),
@@ -117,18 +109,21 @@ server <- function(input, output) {
     extract_tweet(input$search_key)
   })
   
+  cleaned_tweets <- reactive({
+    cleaning_tw_df(extract_tweet(input$search_key))
+  })
+  
+  get_cleaned_MDAs <-reactive({
+    get_cleaned_MDA(get_MDA(input$search_key))})
+  #works somehow
+  
+  # plot-how many tweets retrived per day
+  
   output$tweet_number_plot <- renderPlot({
     plot_tweets_dt(extract_tweets())
   })
   
   # plot-wordcloud
-  cleaned_tweets <- reactive({
-    cleaning_tw_df(extract_tweets())
-  })
-  
-  input_number_tweets <- reactive({
-    input$number_tweets
-  })
   
   output$tweets_wordcloud_plot <- renderPlot({
     make_tweet_wordcloud(cleaned_tweets())
@@ -139,22 +134,21 @@ server <- function(input, output) {
     tweet_sentiment_analysis(cleaned_tweets())
   })
   
-  # plot-10kMDA wordcloud
+  # plot-10kMDA wordcloud (works)
   output$MDA_wordcloud_plot <- renderPlot({
     make_MDA_wordcloud(get_cleaned_MDAs())
   })
   
-  # plot-10kMDA sentiment
-  output$MDA_wordcloud_plot <- renderTable({
+  # plot-10kMDA sentiment(works)
+  output$MDA_sentiment_table <- renderTable({
     MDA_sentiment_LM(get_cleaned_MDAs())
   })
-  
   
 }
 
 
 shinyApp(ui = ui, server = server)
-##########################################################################################################
+
 
 
 #Define all needed functions##############################################################################
@@ -175,12 +169,9 @@ vaild_ticker_symbol <- function(df){
 #Extract data 
 extract_tweet <-function(df){
   
+  
   token <- create_token(
-    app = "homework",
-    consumer_key="",
-    consumer_secret="",
-    access_token="",
-    access_secret="" ) 
+  ) 
   #this is a private token expired on 20210102
   
   usefual_search_key <- c( paste("$",toupper(df),sep = ""))
@@ -323,7 +314,6 @@ tweet_sentiment_analysis <- function(df){
   }else{hourly_sentiment_analysis(df)
   }
 }
-
 
 #daily sentiment analysis base on different dictionary
 daily_sentiment_analysis <- function(df){
@@ -490,7 +480,7 @@ get_MDA <- function(df){
       before = Sys.Date(),
       count = 10
     )%>%
-    filter(year(filing_date ) == year(Sys.Date()))%>%
+    filter(year(filing_date) == max(year(filing_date)))%>%
     select(href)%>%
     as.matrix()%>%
     as.vector()%>%
@@ -500,7 +490,11 @@ get_MDA <- function(df){
     as.matrix()%>%
     as.vector()%>%
     parse_filing()%>%
-    filter(item.name == "Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations")
+    filter(item.name == "Item 7" | item.name == "item 7" | 
+             item.name == "Item7" | item.name == "Item7" |
+             item.name == "ITEM7" | item.name == "ITEM 7" |
+             item.name == "Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations" |
+             item.name == toupper("Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations"))
 }
 
 #get cleaned MDA
@@ -544,10 +538,8 @@ make_MDA_wordcloud<- function(df){
 
 #sentiment analysis based on LM
 MDA_sentiment_LM <- function(df){
-  analyzeSentiment(df)$SentimentLM
+  s <- analyzeSentiment(df)[c(1,8,9,10)]%>%
+    as.data.frame()
 }
-
-
-
 
 
