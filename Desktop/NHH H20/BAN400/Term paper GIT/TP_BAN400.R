@@ -57,7 +57,7 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                      
                      # select number of tweets to be retrived
                      sliderInput(inputId = "number_tweets", label = "Number of tweets to be retrived", 
-                                 min = 500, max = 18000, value = 1000, step = 500), 
+                                 min = 500, max = 18000, value = 500, step = 500), 
                      #min should be a reasonable value
                      
                      #select sentiment dictionary
@@ -99,55 +99,91 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
 
 #Define server(not finished)############################################################################
 server <- function(input, output) {
-  
-  # Subset data
-  # data extracting and search_key must be a vaild ticker symbol
-  extract_tweets <-reactive({
-    req(input$search_key)
-    validate(need(toupper(input$search_key) %in% ticker_symbol),
-             "Error: Please enter a vaild search key.")
-    extract_tweet(input$search_key)
-  })
-  
-  cleaned_tweets <- reactive({
-    cleaning_tw_df(extract_tweet(input$search_key))
-  })
-  
-  get_cleaned_MDAs <-reactive({
-    get_cleaned_MDA(get_MDA(input$search_key))})
-  #works somehow
-  
-  # plot-how many tweets retrived per day
-  
-  output$tweet_number_plot <- renderPlot({
-    plot_tweets_dt(extract_tweets())
-  })
-  
-  # plot-wordcloud
-  
-  output$tweets_wordcloud_plot <- renderPlot({
-    make_tweet_wordcloud(cleaned_tweets())
-  })
-  
-  # plot-tweets sentiment
-  output$tweets_sentiment_plot <- renderPlot({
-    tweet_sentiment_analysis(cleaned_tweets())
-  })
-  
-  # plot-10kMDA wordcloud (works)
-  output$MDA_wordcloud_plot <- renderPlot({
-    make_MDA_wordcloud(get_cleaned_MDAs())
-  })
-  
-  # plot-10kMDA sentiment(works)
-  output$MDA_sentiment_table <- renderTable({
-    MDA_sentiment_LM(get_cleaned_MDAs())
-  })
-  
+  # tweets part
+    # extract data
+    extract_tweets <-reactive({
+      #validation
+      #req(input$search_key)
+      #validate(need(toupper(input$search_key) %in% ticker_symbol),
+      #       "Error: Please enter a vaild search key.")
+    
+      #name the extract_tweet function
+      extract_tweet <- function(df){
+        token <- create_token(app = "homework",
+                              consumer_key="S9tfz9SiSDhPj3ogykznmCQ9y",
+                              consumer_secret="GttpgpiOcTBMuEL22y5w3mKymNORWKyuaIRpB34uMUjqSifWef",
+                              access_token="1294199419097636864-uJ3M5RfVtYn9EZqVn0t6StWaVnWJxg",
+                              access_secret="7UoNPbQsuN4wRmkLSlElWBuCW6j99FBBVl1OcpkUWHWWe" ) 
+        #this is a private token expired on 20210102
+                           
+         usefual_search_key <- c( paste("$",toupper(df),sep = ""))
+                           
+                             
+         search_tweets(
+             usefual_search_key,                          #search key 
+             n = input$number_tweets,                      #number of tweets  shall be input$number_tweets
+             type = "recent",                             #type of tweets
+             include_rts = FALSE,                         #exclude retweet
+             geocode = NULL,
+             max_id = NULL,
+             parse = TRUE,
+             token = token,
+             retryonratelimit = FALSE,
+             verbose = TRUE,
+             lang = "en" )%>%
+           mutate(created_day = as.Date(created_at),    #created day
+                                     created_time = hour(created_at),      #created time
+                                     created_datetime = 
+                                         floor_date(created_at,'hour'))%>%   #created day&time
+           select(-created_at)                          #delete column created_at
+         }
+      
+      #then use the function
+      extract_tweet(input$search_key)
+    
+    })
+    
+    # clean data
+    cleaned_tweets <- reactive({
+      cleaning_tw_df(extract_tweets())
+      })
+             
+               
+    # plot-how many tweets retrived per day&time
+    output$tweets_number_plot <- renderPlot({
+           plot_tweet_dt(extract_tweets())
+      })
+       
+    # plot-wordcloud
+    output$tweets_wordcloud_plot <- renderPlot({
+             make_tweet_wordcloud(cleaned_tweets())
+      })
+         
+    # plot-tweets sentiment
+    output$tweets_sentiment_plot <- renderPlot({
+               tweet_sentiment_analysis(cleaned_tweets())
+      })
+         
+           
+   # 10-k MDA  part
+     # get cleaned text of 10k MDA (works) 
+     get_cleaned_MDAs <-reactive({
+         get_cleaned_MDA(get_MDA(input$search_key))})
+     
+     # plot-10kMDA wordcloud (works)
+     output$MDA_wordcloud_plot <- renderPlot({
+           make_MDA_wordcloud(get_cleaned_MDAs())
+         })
+       
+     # plot-10kMDA sentiment(works)
+     output$MDA_sentiment_table <- renderTable({
+             MDA_sentiment_LM(get_cleaned_MDAs())
+           })
+       
 }
 
-
 shinyApp(ui = ui, server = server)
+
 
 
 
@@ -171,7 +207,12 @@ extract_tweet <-function(df){
   
   
   token <- create_token(
-  ) 
+    app = "homework",
+    consumer_key="",
+    consumer_secret="",
+    access_token="",
+    access_secret="" ) 
+    
   #this is a private token expired on 20210102
   
   usefual_search_key <- c( paste("$",toupper(df),sep = ""))
@@ -179,7 +220,7 @@ extract_tweet <-function(df){
   
   search_tweets(
     usefual_search_key,                          #search key 
-    n =input$number_tweets,                      #number of tweets  shall be input$number_tweets
+    n = 200,                      #number of tweets  shall be input$number_tweets
     type = "recent",                             #type of tweets
     include_rts = FALSE,                         #exclude retweet
     geocode = NULL,
@@ -199,11 +240,11 @@ extract_tweet <-function(df){
 
 #output-timelines - how many tweets retrived per day
 plot_tweet_dt <- function(df){
-  df <- df %>%
+  useful_df <- df %>%
     group_by(created_day, created_time)%>%
     summarize(tw_count = n())
   
-  plot <- df %>%
+  plot <- useful_df %>%
     ggplot(aes(x=created_day,y = created_time, size = tw_count))+
     geom_point(alpha=0.5,show.legend = F)
   
@@ -282,7 +323,6 @@ cleaning_tw_df <- function(df){
     select(user_id, text, source, favorite_count, retweet_count, quote_count, reply_count, followers_count,
            favourites_count, created_day, created_time, created_datetime)
   #replace text with cleaned text and select valuabe columns
-  
 }
 
 
@@ -291,7 +331,7 @@ make_tweet_wordcloud<- function(df){
   x <- 
     DocumentTermMatrix(Corpus(VectorSource(df$text)),
                        control = list(stemming = T,
-                                      bounds = list(global = c(5,input_number_tweets())))) %>%   #500 = input.number_tweets
+                                      bounds = list(global = c(5,500)))) %>%   #500 = input.number_tweets
     as.matrix()%>%
     as.data.frame()%>%
     colSums()
@@ -541,5 +581,9 @@ MDA_sentiment_LM <- function(df){
   s <- analyzeSentiment(df)[c(1,8,9,10)]%>%
     as.data.frame()
 }
+
+
+
+
 
 
