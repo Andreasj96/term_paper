@@ -16,6 +16,7 @@ library(anytime)
 library(tm)
 library(wordcloud)
 library(rlist)
+library(SnowballC)
 
 #Reference ########################################################################################   
 #tweets sentiment analysis http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
@@ -155,42 +156,6 @@ server <- function(input, output) {
     vaild_ticker_symbol <- function(df){
       
       print(toupper(df) %in% ticker_symbol)
-      
-    }
-    
-    #Extract data 
-    extract_tweet <-function(df){
-      
-      
-      token <- create_token(
-        app = "homework",
-        consumer_key="",
-        consumer_secret="",
-        access_token="",
-        access_secret="" ) 
-      
-      #this is a private token expired on 20210102
-      
-      usefual_search_key <- c( paste("$",toupper(df),sep = ""))
-      
-      
-      search_tweets(
-        usefual_search_key,                          #search key 
-        n = 200,                      #number of tweets  shall be input$number_tweets
-        type = "recent",                             #type of tweets
-        include_rts = FALSE,                         #exclude retweet
-        geocode = NULL,
-        max_id = NULL,
-        parse = TRUE,
-        token = token,
-        retryonratelimit = FALSE,
-        verbose = TRUE,
-        lang = "en" )%>%
-        mutate(created_day = as.Date(created_at),    #created day
-               created_time = hour(created_at),      #created time
-               created_datetime = 
-                 floor_date(created_at,'hour'))%>%   #created day&time
-        select(-created_at)                          #delete column created_at
       
     }
     
