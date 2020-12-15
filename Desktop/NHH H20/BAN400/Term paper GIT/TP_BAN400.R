@@ -847,4 +847,23 @@ Stock Price Change for Boeing")
 abline(glm_model)
 
 
-                     
+stock_signal <- function(df){
+  yourstock <- c(toupper(df))
+  stockprice <- get.hist.quote(instrument = yourstock, start = Sys.Date()-60, end = Sys.Date(),quote = "AdjClose")
+  macd_data <- MACD(stockprice, percent = F) 
+  DIFF <- macd_data$macd[length(macd_data$macd)]
+  DEA <- macd_data$signal[length(macd_data$signal)]
+  macd <- 2 * (DIFF - DEA)
+  
+  if(DIFF > 0 & DEA > 0 & macd > 0 ){
+    print("suggest to buy")
+  }else{if(DIFF < 0 & DEA < 0 & macd < 0)
+    print("suggest to sell")
+  }else{
+    print("tight")
+  }
+}
+
+output$trade_advises <- renderPlot({
+  stock_signal(input$search_key)
+})                     
