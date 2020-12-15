@@ -88,7 +88,9 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                        tabPanel("10-K sentiment analysis", 
                                 plotOutput("MDA_wordcloud_plot"),
                                 tableOutput("MDA_sentiment_table")),
-                       tabPanel("Real_time stock price", plotOutput("stock_price")),
+                       tabPanel("Real_time stock price", 
+                                plotOutput("stock_price1"),
+                                plotOutput("stock_price2")),
                        tabPanel("Trade advises", textOutput("trade_advises"))
                      )
                    )
@@ -136,9 +138,8 @@ server <- function(input, output) {
              verbose = TRUE,
              lang = "en" )%>%
            mutate(created_day = as.Date(created_at),    #created day
-                                     created_time = hour(created_at),      #created time
-                                     created_datetime = 
-                                         floor_date(created_at,'hour'))%>%   #created day&time
+                  created_time = hour(created_at),      #created time
+                  created_datetime = floor_date(created_at,'hour'))%>%   #created day&time
            select(-created_at)                          #delete column created_at
          }
       
@@ -263,12 +264,12 @@ server <- function(input, output) {
       #replace text with cleaned text and select valuabe columns
     }
     
-    #1.4 Plot function-wordcloud words appeared most frequently agmong tweets retrived
+    #1.4 Plot function-wordcloud words appeared most frequently among tweets retrived
     make_tweet_wordcloud<- function(df){
       x <- 
         DocumentTermMatrix(Corpus(VectorSource(df$text)),
                            control = list(stemming = T,
-                                          bounds = list(global = c(5,input$number_tweets/2)))) %>%   #500 = input.number_tweets
+                                          bounds = list(global = c(5,input$number_tweets/2)))) %>%   
         as.matrix()%>%
         as.data.frame()%>%
         colSums()
@@ -512,10 +513,30 @@ server <- function(input, output) {
     }
     
     #1.9 sentiment analysis based on LM
-    MDA_sentiment_LM <- function(df){
-      s <- analyzeSentiment(df)[c(1,8,9,10)]%>%
-        as.data.frame()
+    MDA_sentiment_LM <- function(df)
+      
+    #1.10 stock price during period same to retrived tweets'  
+    make_stock_price_withtimespan <- function(df){
+        
+        from_day <- min(cleaned_tweets()$created_day)-5
+        
+        to_day <- max(cleaned_tweets()$created_day)
+        
+        Stock_Price_withtimespan <- getSymbols(toupper(df),from=from_day,to=to_day, src='yahoo',auto.assign =F)
+        
+        plot1 <- chartSeries(Stock_Price_withtimespan)
+      }
+    
+    #1.10 stock price without time limit  
+    make_stock_price_withouttimespan<- function(df){
+      
+      Stock_Price_withouttimespan <-getSymbols(toupper(df), src='yahoo',auto.assign =F)
+      
+      plot2 <- chartSeries(Stock_Price_withouttimespan)
+      
+      
     }
+    
     
   #2 OUTPUT
     #2.1 tweets part
@@ -555,7 +576,36 @@ server <- function(input, output) {
       output$MDA_sentiment_table <- renderTable({
              MDA_sentiment_LM(get_cleaned_MDAs())
            })
-       
+      
+    
+    #2.3 Real_time stock price part
+      make_stock_price_withtimespan <- function(df){
+        
+        from_day <- min(cleaned_tweets()$created_day)
+        
+        to_day <- max(cleaned_tweets()$created_day)
+        
+        Stock_Price_withtimespan <- getSymbols(toupper(df),from=from_day,to=to_day, src='yahoo',auto.assign =F)
+        
+        plot1 <- chartSeries(Stock_Price_withtimespan)
+      }
+      
+      make_stock_price_withouttimespan<- function(df){
+        
+        Stock_Price_withouttimespan <-getSymbols(toupper(df), src='yahoo',auto.assign =F)
+        
+        plot2 <- chartSeries(Stock_Price_withouttimespan)
+        
+        
+      }
+  
+      output$stock_price1 <- renderPlot({
+        make_stock_price_withtimespan(input$search_key)
+      })
+      
+      output$stock_price2 <- renderPlot({
+        make_stock_price_withouttimespan(input$search_key)
+      })
 }
 
 shinyApp(ui = ui, server = server)
