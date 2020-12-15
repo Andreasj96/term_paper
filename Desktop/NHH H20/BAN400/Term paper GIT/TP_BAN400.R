@@ -17,6 +17,7 @@ library(tm)
 library(wordcloud)
 library(rlist)
 library(SnowballC)
+library(quantmod)
 
 #Reference ########################################################################################   
 #tweets sentiment analysis http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
@@ -100,8 +101,10 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
 
 #Define server(finished)############################################################################
 server <- function(input, output) {
-  # tweets part
-    # extract data
+  
+  #1 PREPARATION(define all needed functions)
+  
+    #1.1  extract data
     extract_tweets <-reactive({
       #validation
       #req(input$search_key)
@@ -144,22 +147,21 @@ server <- function(input, output) {
     
     })
     
-    #Define all needed functions##############################################################################
     
     #Search key must be in this dataset
-    ticker_symbol <- supported_tickers()%>%
-      filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )%>%
-      select(ticker)%>%
-      as.matrix()%>%
-      as.vector()
+    #ticker_symbol <- supported_tickers()%>%
+    #  filter(exchange == "AMEX" | exchange == "NASDAQ" | exchange == "NYSE" )%>%
+    #  select(ticker)%>%
+    #  as.matrix()%>%
+    #  as.vector()
     
-    vaild_ticker_symbol <- function(df){
-      
-      print(toupper(df) %in% ticker_symbol)
-      
-    }
+    #vaild_ticker_symbol <- function(df){
+    #  
+    #  print(toupper(df) %in% ticker_symbol)
+    #  
+    #}
     
-    #output-timelines - how many tweets retrived per day
+    #1.2 Plot function-how many tweets retrived per day
     plot_tweet_dt <- function(df){
       useful_df <- df %>%
         group_by(created_day, created_time)%>%
@@ -185,8 +187,9 @@ server <- function(input, output) {
       print(plot)
     }
     
-    #Preprocess function
+    #1.3 Preprocess function
     cleaning_tw_df <- function(df){
+      # extract hashtags cantained in each tweets
       extract_hashtag <- 
         DocumentTermMatrix(Corpus(VectorSource(df$hashtags)),
                            control = list( removePunctuation = T,
@@ -194,9 +197,10 @@ server <- function(input, output) {
                                            tolower = T ))%>%
         as.matrix()%>%
         as.data.frame()%>%
-        colnames()
-      #extract hashtags cantained in each tweets
+        colnames()%>%
+        unique()
       
+      # extract ticker symbols cantained in each tweets
       extract_ticker <- 
         DocumentTermMatrix(Corpus(VectorSource(df$symbols)),
                            control = list( removePunctuation = T,
@@ -204,29 +208,38 @@ server <- function(input, output) {
                                            tolower = T ))%>%
         as.matrix()%>%
         as.data.frame()%>%
-        colnames()
-      #extract ticker symbols cantained in each tweets
+        colnames()%>%
+        unique()
       
-      extract_url1 <-
-        df$urls_t.co%>%
-        unlist()%>%
-        .[is.na(.) == F]
-      #extract url cantained in each tweets
+      # name a function that can remove URL from text
+      remove_URL <- function(df){
+        
+        data <- NA
+        
+        for (i in 1:nrow(df)){
+          extractURL1 <-
+            df$urls_t.co[i]%>%
+            unlist()
+          
+          
+          extractURL2 <-
+            df$media_t.co[i]%>%
+            unlist()
+          
+          combineURL <- c(extractURL1,extractURL2)%>%
+            unique()
+          
+          data[i] <- removeWords( t1$text[i,], combineURL)
+        }
+        print(data)
+      }
       
-      extract_url2 <-
-        df$media_t.co%>%
-        unlist()%>%
-        .[is.na(.) == F]
-      #extract another url cantained in each tweets
-      
+      # get cleaned text and turn it into a dataframe
       cleaned_text <- 
-        df$text %>% 
-        removeWords(.,extract_url1)%>%         #remove url1
-        removeWords(.,extract_url2)%>%         #remove url2
-        gsub("U0001.{4}", " ", .)%>%           #doesnot work!!!
-        gsub("U0001", " ", .)%>%               #doesnot work!!!
-        gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
+        df%>%
+        remove_URL()%>%                        #remove URLs
         tolower() %>%                          #convert to lower case 
+        gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
         gsub("amp"," ", .)%>%                  #remove amp
         gsub("https", " ", .)%>%               #remove https
         removeWords(.,extract_hashtag)%>%      #remove hashtags
@@ -235,24 +248,28 @@ server <- function(input, output) {
         removeWords(., stopwords("en")) %>%    #remove standard stopwords
         gsub('\\b\\w{1,2}\\b','', .) %>%       #remove words of length 1-2
         gsub("\\s(\\s*)", " ", .) %>%          #remove excess whitespace
-        trimws()                               #remove first space
-      #get cleaned tweet text
+        trimws()%>%                            #remove first space
+        as.matrix()%>%
+        as.data.frame()
       
+      # rename the colname
+      colnames(cleaned_text) <-c( "text")
+      
+      #get cleaned tweet text and select some other valuabe columns
       cleaned_tw <- 
         df%>%
-        mutate(text = cleaned_text)%>%
+        select(-text)%>%
+        cbind(cleaned_text)%>%
         select(user_id, text, source, favorite_count, retweet_count, quote_count, reply_count, followers_count,
                favourites_count, created_day, created_time, created_datetime)
-      #replace text with cleaned text and select valuabe columns
     }
     
-    
-    #Output-wordcloud words appeared most frequently agmong tweets retrived
+    #1.4 Plot function-wordcloud words appeared most frequently agmong tweets retrived
     make_tweet_wordcloud<- function(df){
       x <- 
         DocumentTermMatrix(Corpus(VectorSource(df$text)),
                            control = list(stemming = T,
-                                          bounds = list(global = c(5,500)))) %>%   #500 = input.number_tweets
+                                          bounds = list(global = c(5,input$number_tweets/2)))) %>%   #500 = input.number_tweets
         as.matrix()%>%
         as.data.frame()%>%
         colSums()
@@ -267,8 +284,7 @@ server <- function(input, output) {
       
     }
     
-    #Output-short term sentiment analysis base on twitter
-    #sentiment analysis
+    #1.5 sentiment analysis function
     tweet_sentiment_analysis <- function(df){
       if(input$frequent == "Daily"){
         daily_sentiment_analysis(df)
@@ -276,160 +292,159 @@ server <- function(input, output) {
       }
     }
     
-    #daily sentiment analysis base on different dictionary
-    daily_sentiment_analysis <- function(df){
-      if(input$dictionary == "Harvard"){
-        daily_harvard_sentiment(df)
-      }else{
-        daily_lm_sentiment(df)
+      #1.5.1 daily sentiment analysis base on different dictionary
+      daily_sentiment_analysis <- function(df){
+        if(input$dictionary == "Harvard"){
+          daily_harvard_sentiment(df)
+        }else{
+          daily_lm_sentiment(df)
+        }
       }
-    }
-    
-    # harvard sentiment function
-    daily_harvard_sentiment <- function(df){
       
-      daily_score_H <- df %>%
-        mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
-        group_by(created_day)%>%
-        summarize( daily_harvard_score = mean (harvard_score, na.rm = T))
+      #1.5.2  harvard sentiment function
+      daily_harvard_sentiment <- function(df){
+        
+        daily_score_H <- df %>%
+          mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
+          group_by(created_day)%>%
+          summarize( daily_harvard_score = mean (harvard_score, na.rm = T))
+        
+        if(length(unique(daily_score_H$created_day)) > 2){
+          daily_score_H%>%
+            ggplot(aes(x= created_day, y= daily_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_date(limits=c(min(daily_score_H$created_day)+1, max(daily_score_H$created_day)))+
+            geom_smooth(alpha = 0, method = "lm")+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
+        }else{if(length(unique(daily_score_H$created_day)) > 1)
+        {daily_score_H%>%
+            ggplot(aes(x= created_day, y= daily_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_date(limits= c(max(daily_score_H$created_day)))+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
+        }else{
+          daily_score_H%>%
+            ggplot(aes(x= created_day, y= daily_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
+        }
+        }
+      }
       
-      if(length(unique(daily_score_H$created_day)) > 2){
-        daily_score_H%>%
-          ggplot(aes(x= created_day, y= daily_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_date(limits=c(min(daily_score_H$created_day)+1, max(daily_score_H$created_day)))+
-          geom_smooth(alpha = 0, method = "lm")+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
-      }else{if(length(unique(daily_score_H$created_day)) > 1)
-      {daily_score_H%>%
-          ggplot(aes(x= created_day, y= daily_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_date(limits= c(max(daily_score_H$created_day)))+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
-      }else{
-        daily_score_H%>%
-          ggplot(aes(x= created_day, y= daily_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on Harvard Dictionary")
+      #1.5.3 LM sentiment function
+      daily_lm_sentiment <-  function(df){
+        
+        daily_score_LM <- df %>%
+          mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
+          group_by(created_day)%>%
+          summarize( daily_lm_score = mean (lm_score, na.rm = T))
+        
+        if(length(unique(daily_score_LM$created_day)) > 2){
+          daily_score_LM%>%
+            ggplot(aes(x= created_day, y= daily_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_date(limits=c(min(daily_score_LM$created_day)+1, max(daily_score_LM$created_day)))+
+            geom_smooth(alpha = 0, method = "lm")+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
+        }else{if(length(unique(daily_score_LM$created_day)) > 1)
+        {daily_score_LM%>%
+            ggplot(aes(x= created_day, y= daily_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_date(limits= max(daily_score_LM$created_day))+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
+        }else{
+          daily_score_LM%>%
+            ggplot(aes(x= created_day, y= daily_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
+        }
+        }
       }
-      }
-    }
-    
-    # LM sentiment function
-    daily_lm_sentiment <-  function(df){
       
-      daily_score_LM <- df %>%
-        mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
-        group_by(created_day)%>%
-        summarize( daily_lm_score = mean (lm_score, na.rm = T))
+      #1.5.4 hourly sentiment analysis base on different dictionary 
+      hourly_sentiment_analysis <- function(df){
+        if(input$dictionary == "Harvard"){
+          hourly_harvard_sentiment(df)
+        }else{
+          hourly_lm_sentiment(df)
+        }
+      }
       
-      if(length(unique(daily_score_LM$created_day)) > 2){
-        daily_score_LM%>%
-          ggplot(aes(x= created_day, y= daily_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_date(limits=c(min(daily_score_LM$created_day)+1, max(daily_score_LM$created_day)))+
-          geom_smooth(alpha = 0, method = "lm")+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
-      }else{if(length(unique(daily_score_LM$created_day)) > 1)
-      {daily_score_LM%>%
-          ggplot(aes(x= created_day, y= daily_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_date(limits= max(daily_score_LM$created_day))+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
-      }else{
-        daily_score_LM%>%
-          ggplot(aes(x= created_day, y= daily_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          labs(x="Created Day",y="Daily Sentiment Score",title="Sentiment Analysis based on LM Dictionary")
+      #1.5.5 harvard sentiment function
+      hourly_harvard_sentiment <- function(df){
+        
+        hourly_score_H <- df %>%
+          mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
+          group_by(created_datetime)%>%
+          summarize( hourly_harvard_score = mean (harvard_score, na.rm = T))
+        
+        if(length(unique(hourly_score_H$created_datetime)) > 2){
+          hourly_score_H%>%
+            ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_datetime(limits=c(hourly_score_H$created_datetime[2], 
+                                      hourly_score_H$created_datetime[length(hourly_score_H$created_datetime)]))+
+            geom_smooth(alpha = 0, method = "lm")+
+            labs(x="Created Date&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
+        }else{if(length(unique(hourly_score_H$created_day)) > 1)
+        {hourly_score_H%>%
+            ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_datetime(limits= c(max(daily_score_H$created_datetime)))+
+            labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
+        }else{
+          hourly_score_H%>%
+            ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
+        }
+        }
       }
-      }
-    }
-    
-    #hourly sentiment analysis base on different dictionary 
-    hourly_sentiment_analysis <- function(df){
-      if(input$dictionary == "Harvard"){
-        hourly_harvard_sentiment(df)
-      }else{
-        hourly_lm_sentiment(df)
-      }
-    }
-    
-    # harvard sentiment function
-    hourly_harvard_sentiment <- function(df){
       
-      hourly_score_H <- df %>%
-        mutate(harvard_score = analyzeSentiment(text)$SentimentGI)%>%
-        group_by(created_datetime)%>%
-        summarize( hourly_harvard_score = mean (harvard_score, na.rm = T))
+      #1.5.6 LM sentiment function
+      hourly_lm_sentiment <- function(df){
+        
+        hourly_score_LM <- df %>%
+          mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
+          group_by(created_datetime)%>%
+          summarize( hourly_lm_score = mean (lm_score, na.rm = T))
+        
+        if(length(unique(hourly_score_LM$created_datetime)) > 2){
+          hourly_score_LM%>%
+            ggplot(aes(x= created_datetime, y= hourly_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_datetime(limits=c(hourly_score_LM$created_datetime[2], 
+                                      max(hourly_score_LM$created_datetime)))+
+            geom_smooth(alpha = 0, method = "lm")+
+            labs(x="Created Date&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
+        }else{if(length(unique(hourly_score_LM$created_datetime)) > 1)
+        {hourly_score_LM%>%
+            ggplot(aes(x= created_datetime, y= hourly_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            scale_x_datetime(limits= c(max(daily_score_LM$created_datetime)))+
+            labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
+        }else{
+          hourly_score_LM%>%
+            ggplot(aes(x= created_datetime, y= hourly_lm_score))+
+            geom_point(show.legend = F, col = "red")+
+            geom_line()+
+            labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
+        }
+        }
+      }
       
-      if(length(unique(hourly_score_H$created_datetime)) > 2){
-        hourly_score_H%>%
-          ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_datetime(limits=c(hourly_score_H$created_datetime[2], 
-                                    hourly_score_H$created_datetime[length(hourly_score_H$created_datetime)]))+
-          geom_smooth(alpha = 0, method = "lm")+
-          labs(x="Created Date&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
-      }else{if(length(unique(hourly_score_H$created_day)) > 1)
-      {hourly_score_H%>%
-          ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_datetime(limits= c(max(daily_score_H$created_datetime)))+
-          labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
-      }else{
-        hourly_score_H%>%
-          ggplot(aes(x= created_datetime, y= hourly_harvard_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on Harvard Dictionary")
-      }
-      }
-    }
-    
-    # LM sentiment function
-    hourly_lm_sentiment <- function(df){
-      
-      hourly_score_LM <- df %>%
-        mutate(lm_score = analyzeSentiment(text)$SentimentLM)%>%
-        group_by(created_datetime)%>%
-        summarize( hourly_lm_score = mean (lm_score, na.rm = T))
-      
-      if(length(unique(hourly_score_LM$created_datetime)) > 2){
-        hourly_score_LM%>%
-          ggplot(aes(x= created_datetime, y= hourly_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_datetime(limits=c(hourly_score_LM$created_datetime[2], 
-                                    max(hourly_score_LM$created_datetime)))+
-          geom_smooth(alpha = 0, method = "lm")+
-          labs(x="Created Date&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
-      }else{if(length(unique(hourly_score_LM$created_datetime)) > 1)
-      {hourly_score_LM%>%
-          ggplot(aes(x= created_datetime, y= hourly_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          scale_x_datetime(limits= c(max(daily_score_LM$created_datetime)))+
-          labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
-      }else{
-        hourly_score_LM%>%
-          ggplot(aes(x= created_datetime, y= hourly_lm_score))+
-          geom_point(show.legend = F, col = "red")+
-          geom_line()+
-          labs(x="Created Day&Time",y="Hourly Sentiment Score",title="Hourly Sentiment Analysis based on LM Dictionary")
-      }
-      }
-    }
-    
-    #Output-longterm sentiment analysis base on 10-k 
-    #get MDA part of the lastest 10-k
+    #1.6 get MDA part of the lastest 10-k
     get_MDA <- function(df){
       useful_search_key <- toupper(df)
       
@@ -458,7 +473,7 @@ server <- function(input, output) {
                  item.name == toupper("Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations"))
     }
     
-    #get cleaned MDA
+    #1.7 get cleaned MDA
     get_cleaned_MDA <- function(df){
       customed_word <- c("company", "10-K", "form", "FORM", "item", "ITEM")
       
@@ -477,7 +492,7 @@ server <- function(input, output) {
         trimws()
     }
     
-    #make a wordcloud
+    #1.8 make a wordcloud
     make_MDA_wordcloud<- function(df){
       x <- 
         DocumentTermMatrix(Corpus(VectorSource(df)),
@@ -497,47 +512,48 @@ server <- function(input, output) {
       
     }
     
-    #sentiment analysis based on LM
+    #1.9 sentiment analysis based on LM
     MDA_sentiment_LM <- function(df){
       s <- analyzeSentiment(df)[c(1,8,9,10)]%>%
         as.data.frame()
     }
     
+  #2 OUTPUT
+    #2.1 tweets part
     
-    # clean data
-    cleaned_tweets <- reactive({
-      cleaning_tw_df(extract_tweets())
-      })
-             
-               
-    # plot-how many tweets retrived per day&time
-    output$tweets_number_plot <- renderPlot({
-           plot_tweet_dt(extract_tweets())
-      })
-       
-    # plot-wordcloud
-    output$tweets_wordcloud_plot <- renderPlot({
-             make_tweet_wordcloud(cleaned_tweets())
-      })
+      #2.1.1 clean data
+      cleaned_tweets <- reactive({
+        cleaning_tw_df(extract_tweets())
+        })
+                 
+      #2.1.2 plot-how many tweets retrived per day&time
+      output$tweets_number_plot <- renderPlot({
+             plot_tweet_dt(extract_tweets())
+        })
          
-    # plot-tweets sentiment
-    output$tweets_sentiment_plot <- renderPlot({
-               tweet_sentiment_analysis(cleaned_tweets())
-      })
-         
+      #2.1.3 plot-wordcloud
+      output$tweets_wordcloud_plot <- renderPlot({
+               make_tweet_wordcloud(cleaned_tweets())
+        })
            
-   # 10-k MDA  part
-     # get cleaned text of 10k MDA (works) 
-     get_cleaned_MDAs <-reactive({
+      #2.1.4 plot-tweets sentiment
+      output$tweets_sentiment_plot <- renderPlot({
+                 tweet_sentiment_analysis(cleaned_tweets())
+        })
+           
+    #2.2 10-k MDA  part
+     
+      #2.2.1 get cleaned text of 10k MDA (works) 
+      get_cleaned_MDAs <-reactive({
          get_cleaned_MDA(get_MDA(input$search_key))})
      
-     # plot-10kMDA wordcloud (works)
-     output$MDA_wordcloud_plot <- renderPlot({
+      #2.2.2 plot-10kMDA wordcloud (works)
+      output$MDA_wordcloud_plot <- renderPlot({
            make_MDA_wordcloud(get_cleaned_MDAs())
          })
        
-     # plot-10kMDA sentiment(works)
-     output$MDA_sentiment_table <- renderTable({
+      #2.2.3 plot-10kMDA sentiment(works)
+      output$MDA_sentiment_table <- renderTable({
              MDA_sentiment_LM(get_cleaned_MDAs())
            })
        
