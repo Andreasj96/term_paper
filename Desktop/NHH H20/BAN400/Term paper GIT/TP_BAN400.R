@@ -90,8 +90,7 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                                 plotOutput("MDA_wordcloud_plot"),
                                 tableOutput("MDA_sentiment_table")),
                        tabPanel("Real_time stock price", 
-                                plotOutput("stock_price1"),
-                                plotOutput("stock_price2")),
+                                plotOutput("stock_price_plot")),
                        tabPanel("Trade advises", textOutput("trade_advises"))
                      )
                    )
@@ -561,34 +560,17 @@ server <- function(input, output) {
   
     
     #2.3 Real_time stock price part
-      make_stock_price_withtimespan <- function(df){
+      stock_price <- function(df) {
         
-        from_day <- min(cleaned_tweets()$created_day)
-        
-        to_day <- max(cleaned_tweets()$created_day)
-        
-        Stock_Price_withtimespan <- getSymbols(toupper(df),from=from_day,to=to_day, src='yahoo',auto.assign =F)
-        
-        plot1 <- chartSeries(Stock_Price_withtimespan)
-      }
-      
-      make_stock_price_withouttimespan<- function(df){
-        
-        Stock_Price_withouttimespan <-getSymbols(toupper(df), src='yahoo',auto.assign =F)
-        
-        plot2 <- chartSeries(Stock_Price_withouttimespan)
-        
+        temp_data <- getSymbols(df ,src="yahoo",from=Sys.Date()-90,to=Sys.Date(), auto.assign = F)
+        plot <- quantmod::chartSeries(temp_data,up.col='red', dn.col='green',theme="white",
+                                      TA=c(addBBands(),addMACD(),addADX(),addVo()))
         
       }
-  
-      output$stock_price1 <- renderPlot({
-        make_stock_price_withtimespan(input$search_key)
-      })
       
-      
-  
-       output$stock_price2 <- renderPlot({
-        make_stock_price_withouttimespan(input$search_key)
+      # plot stock price plot
+      output$stock_price_plot <- renderPlot({
+        stock_price(input$search_key)
       })
   
        #3.1 trade advise part
@@ -624,9 +606,6 @@ shinyApp(ui = ui, server = server)
   
   
   
-}
-
-shinyApp(ui = ui, server = server)
 
 
 ########################################################################################
