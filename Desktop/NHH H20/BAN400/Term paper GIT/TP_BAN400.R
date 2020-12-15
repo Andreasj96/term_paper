@@ -847,6 +847,7 @@ Stock Price Change for Boeing")
 abline(glm_model)
 
 
+
 stock_signal <- function(df){
   yourstock <- c(toupper(df))
   stockprice <- get.hist.quote(instrument = yourstock, start = Sys.Date()-60, end = Sys.Date(),quote = "AdjClose")
@@ -864,6 +865,9 @@ stock_signal <- function(df){
   }
 }
 
+
+
 output$trade_advises <- renderPlot({
   stock_signal(input$search_key)
-})                     
+})
+stock_signal("GOOG")                   
