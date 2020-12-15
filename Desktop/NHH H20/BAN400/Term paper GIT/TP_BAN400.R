@@ -18,6 +18,7 @@ library(wordcloud)
 library(rlist)
 library(SnowballC)
 library(quantmod)
+library(tseries) 
 
 #Reference ########################################################################################   
 #tweets sentiment analysis http://blueanalysis.com/iulianserban/Files/twitter_report.pdf
@@ -847,7 +848,7 @@ Stock Price Change for Boeing")
 abline(glm_model)
 
 
-
+# advise function
 stock_signal <- function(df){
   yourstock <- c(toupper(df))
   stockprice <- get.hist.quote(instrument = yourstock, start = Sys.Date()-60, end = Sys.Date(),quote = "AdjClose")
@@ -866,7 +867,7 @@ stock_signal <- function(df){
 }
 
 
-
+# present advise base on analyze
 output$trade_advises <- renderText({
   stock_signal(input$search_key)
 })
