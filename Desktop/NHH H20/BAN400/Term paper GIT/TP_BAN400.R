@@ -38,7 +38,7 @@ library(tseries)
 
 
 #Define UI###############################################################################################
-ui <- fluidPage( titlePanel("Stock Trade Advises"),
+ui <- fluidPage( titlePanel("Stock Screener"),
                  
                  sidebarLayout(
                    sidebarPanel(
@@ -89,9 +89,9 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
                        tabPanel("10-K sentiment analysis", 
                                 plotOutput("MDA_wordcloud_plot"),
                                 tableOutput("MDA_sentiment_table")),
-                       tabPanel("Real_time stock price", 
+                       tabPanel("Real time stock price", 
                                 plotOutput("stock_price_plot")),
-                       tabPanel("Trade advises", textOutput("trade_advises"))
+                       tabPanel("Trading advice", textOutput("trade_advises"))
                      )
                    )
                  )
@@ -101,7 +101,7 @@ ui <- fluidPage( titlePanel("Stock Trade Advises"),
 
 
 
-#Define server(finished)############################################################################
+#Define server############################################################################
 server <- function(input, output) {
   
   #1 PREPARATION(define all needed functions)
@@ -189,7 +189,7 @@ server <- function(input, output) {
       print(plot)
     }
   
-    #1.3 Preprocess function
+    #1.3 Preprocessing function
     cleaning_tw_df <- function(df){
       extract_hashtag <- 
         DocumentTermMatrix(Corpus(VectorSource(df$hashtags)),
@@ -544,16 +544,16 @@ server <- function(input, output) {
   
     #2.2 10-k MDA  part
   
-      #2.2.1 get cleaned text of 10k MDA (works) 
+      #2.2.1 get cleaned text of 10k MDA  
       get_cleaned_MDAs <-reactive({
         get_cleaned_MDA(get_MDA(input$search_key))})
       
-      #2.2.2 plot-10kMDA wordcloud (works)
+      #2.2.2 plot-10kMDA wordcloud 
       output$MDA_wordcloud_plot <- renderPlot({
         make_MDA_wordcloud(get_cleaned_MDAs())
       })
       
-      #2.2.3 plot-10kMDA sentiment(works)
+      #2.2.3 plot-10kMDA sentiment
       output$MDA_sentiment_table <- renderTable({
         MDA_sentiment_LM(get_cleaned_MDAs())
       })
@@ -573,7 +573,7 @@ server <- function(input, output) {
         stock_price(input$search_key)
       })
   
-       #3.1 trade advise part
+       #3.1 trading advice part based on Moving Average Convergence Divegence (MACD)
        stock_signal <- function(df){
         yourstock <- c(toupper(df))
         stockprice <- get.hist.quote(instrument = yourstock, start = Sys.Date()-60, end = Sys.Date(),quote = "AdjClose")
@@ -583,15 +583,15 @@ server <- function(input, output) {
         macd <- 2 * (DIFF - DEA)
         
         if(DIFF > 0 & DEA > 0 & macd > 0 ){
-          print("suggest to buy")
+          print("You should buy this stock")
           
         }else if(DIFF < 0 & DEA < 0 & macd < 0){
-          print("suggest to sell")
+          print("You should sell this stock")
         }else{
-          print("tight")
+          print("Hold / Neutral")
         }}
         
-        # present advise base on analyze
+        # present advice based on technical analysis
         output$trade_advises <- renderText ({
           stock_signal(input$search_key)
         })
