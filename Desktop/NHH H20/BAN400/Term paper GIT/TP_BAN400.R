@@ -5,7 +5,7 @@ library(shiny)
 library(rtweet)
 library(tidyquant)
 library(tidyverse)
-library(dplyr)
+library(dplyr) #Keep in mind that arguments from this package might not work with "plyr" package loaded in environment. Plyr should be unloaded.
 library(SentimentAnalysis)
 library(ggplot2)
 library(wordcloud)
