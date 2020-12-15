@@ -867,7 +867,7 @@ stock_signal <- function(df){
 
 
 
-output$trade_advises <- renderPlot({
+output$trade_advises <- renderText({
   stock_signal(input$search_key)
 })
                    
