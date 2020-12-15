@@ -870,4 +870,4 @@ stock_signal <- function(df){
 output$trade_advises <- renderPlot({
   stock_signal(input$search_key)
 })
-stock_signal("GOOG")                   
+                   
