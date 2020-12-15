@@ -189,7 +189,6 @@ server <- function(input, output) {
     
     #1.3 Preprocess function
     cleaning_tw_df <- function(df){
-      # extract hashtags cantained in each tweets
       extract_hashtag <- 
         DocumentTermMatrix(Corpus(VectorSource(df$hashtags)),
                            control = list( removePunctuation = T,
@@ -199,8 +198,8 @@ server <- function(input, output) {
         as.data.frame()%>%
         colnames()%>%
         unique()
+      #extract hashtags cantained in each tweets
       
-      # extract ticker symbols cantained in each tweets
       extract_ticker <- 
         DocumentTermMatrix(Corpus(VectorSource(df$symbols)),
                            control = list( removePunctuation = T,
@@ -210,8 +209,8 @@ server <- function(input, output) {
         as.data.frame()%>%
         colnames()%>%
         unique()
+      #extract ticker symbols cantained in each tweets
       
-      # name a function that can remove URL from text
       remove_URL <- function(df){
         
         data <- NA
@@ -229,15 +228,15 @@ server <- function(input, output) {
           combineURL <- c(extractURL1,extractURL2)%>%
             unique()
           
-          data[i] <- removeWords( t1$text[i,], combineURL)
+          data[i] <- removeWords( df$text[i], combineURL)
         }
         print(data)
       }
       
-      # get cleaned text and turn it into a dataframe
       cleaned_text <- 
         df%>%
-        remove_URL()%>%                        #remove URLs
+        remove_URL()%>%
+        as.vector()%>%
         tolower() %>%                          #convert to lower case 
         gsub("[[:punct:]]", " ", .) %>%        #remove punctuation
         gsub("amp"," ", .)%>%                  #remove amp
@@ -252,16 +251,16 @@ server <- function(input, output) {
         as.matrix()%>%
         as.data.frame()
       
-      # rename the colname
       colnames(cleaned_text) <-c( "text")
+      #get cleaned tweet text
       
-      #get cleaned tweet text and select some other valuabe columns
       cleaned_tw <- 
         df%>%
         select(-text)%>%
         cbind(cleaned_text)%>%
         select(user_id, text, source, favorite_count, retweet_count, quote_count, reply_count, followers_count,
                favourites_count, created_day, created_time, created_datetime)
+      #replace text with cleaned text and select valuabe columns
     }
     
     #1.4 Plot function-wordcloud words appeared most frequently agmong tweets retrived
