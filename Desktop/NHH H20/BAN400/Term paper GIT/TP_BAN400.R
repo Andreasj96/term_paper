@@ -585,9 +585,45 @@ server <- function(input, output) {
         make_stock_price_withtimespan(input$search_key)
       })
       
-      output$stock_price2 <- renderPlot({
+      
+  
+       output$stock_price2 <- renderPlot({
         make_stock_price_withouttimespan(input$search_key)
       })
+  
+       #3.1 trade advise part
+       stock_signal <- function(df){
+        yourstock <- c(toupper(df))
+        stockprice <- get.hist.quote(instrument = yourstock, start = Sys.Date()-60, end = Sys.Date(),quote = "AdjClose")
+        macd_data <- MACD(stockprice, percent = F) 
+        DIFF <- macd_data$macd[length(macd_data$macd)]
+        DEA <- macd_data$signal[length(macd_data$signal)]
+        macd <- 2 * (DIFF - DEA)
+        
+        if(DIFF > 0 & DEA > 0 & macd > 0 ){
+          print("suggest to buy")
+          
+        }else if(DIFF < 0 & DEA < 0 & macd < 0){
+          print("suggest to sell")
+        }else{
+          print("tight")
+        }}
+        
+        # present advise base on analyze
+        output$trade_advises <- renderText ({
+          stock_signal(input$search_key)
+        })
+        
+      
+      
+      
+      
+}
+
+shinyApp(ui = ui, server = server)
+  
+  
+  
 }
 
 shinyApp(ui = ui, server = server)
