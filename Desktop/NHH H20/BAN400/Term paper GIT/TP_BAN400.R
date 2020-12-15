@@ -592,6 +592,259 @@ server <- function(input, output) {
 shinyApp(ui = ui, server = server)
 
 
+########################################################################################
+
+# Stock Price Prediction Using Sentiment Analysis: Boeing Stock
+
+library(twitteR)
+library(httr)
+library(stringr)
+library(ggplot2)
+
+key = "S9tfz9SiSDhPj3ogykznmCQ9y"
+secret =
+  "GttpgpiOcTBMuEL22y5w3mKymNORWKyuaIRpB34uMUjqSifWef"
+mytoken = "1294199419097636864-uJ3M5RfVtYn9EZqVn0t6StWaVnWJxg"
+secrettoken =
+  "7UoNPbQsuN4wRmkLSlElWBuCW6j99FBBVl1OcpkUWHWWe"
+
+# keep this order of arguments
+setup_twitter_oauth(key, secret, mytoken, secrettoken)
+
+tweets = searchTwitter("@Boeing OR #Boeing", n = 4500, since = "2020-12-08", lang =
+                         "en")
+
+#convert list to data frame
+tweets.df <- twListToDF(tweets)
+
+library(dplyr)
+
+tweets.nodups.df <- distinct(tweets.df, text, .keep_all =
+                               TRUE)
+
+tweets.nodups.df$text <- gsub('…', '',
+                              tweets.nodups.df$text)
+
+tweets.nodups.df <- plyr::rename(tweets.nodups.df,
+                                 c("created" = "Date")) #rename created to Date
+
+tweets.nodups.df$Date <- as.Date(tweets.nodups.df$Date)
+#convert from datetime to date format
+
+#create text list with tweets for sentiment analysis
+tweets_text <- lapply(tweets, function(x) x$getText())
+
+#fix Mac encoding issue with
+tweets_text <- sapply(tweets_text,function(row)
+  iconv(row, to = 'UTF-8-MAC', sub = 'byte'))
+
+#removing duplicate tweets (retweets) from list
+tweets_nodups_text <- unique(tweets_text)
+
+library(NLP)
+library(tm)
+
+#Create tweet corpus
+r_stats_text_corpus <-
+  Corpus(VectorSource(tweets_nodups_text))
+
+#Clean up corpus in prepartion for word cloud
+#Encoding corrections for Mac
+r_stats_text_corpus <- tm_map(r_stats_text_corpus,
+                              content_transformer(function(x) iconv(x, to='UTF-8-MAC', sub='byte')))
+r_stats_text_corpus <- tm_map(r_stats_text_corpus,
+                              content_transformer(tolower)) #Transform all text to lower case
+r_stats_text_corpus <- tm_map(r_stats_text_corpus,
+                              removePunctuation) #remove all punctuation
+r_stats_text_corpus <- tm_map(r_stats_text_corpus,
+                              function(x)removeWords(x,stopwords())) #remove all stop words
+
+library(wordcloud)
+#Create color word cloud
+wordcloud(r_stats_text_corpus, min.freq = 10, max.words =
+            150, colors=brewer.pal(8, "Dark2"))
+
+score.sentiment = function(sentences, pos.words,
+                           neg.words, .progress='none')
+{
+  require(plyr)
+  require(stringr)
+  scores = laply(sentences, function(sentence, pos.words,
+                                     neg.words) {
+    
+    # clean up sentences with R's regex-driven global
+    #substitute, gsub():
+    sentence = gsub('[[:punct:]]', '', sentence)
+    sentence = gsub('[[:cntrl:]]', '', sentence)
+    sentence = gsub('\\d+', '', sentence)
+    # and convert to lower case:
+    sentence = tolower(sentence)
+    
+    # split into words. str_split is in the stringr
+    #package
+    word.list = str_split(sentence, '\\s+')
+
+    words = unlist(word.list)
+    
+    # compare our words to the dictionaries of positive &
+    #negative terms
+    pos.matches = match(words, pos.words)
+    neg.matches = match(words, neg.words)
+    
+    # match() returns the position of the matched term or
+    #NA
+    # we just want a TRUE/FALSE:
+    pos.matches = !is.na(pos.matches)
+    neg.matches = !is.na(neg.matches)
+    
+    # and conveniently enough, TRUE/FALSE will be treated
+    #as 1/0 by sum():
+    score = sum(pos.matches) - sum(neg.matches)
+    
+    return(score)
+  }, pos.words, neg.words, .progress=.progress )
+  
+  scores.df = data.frame(score=scores, text=sentences)
+  return(scores.df)
+}
+
+#The positive and negative words lexicons are stored in a
+#local directory. Txt files are supplied separately.
+
+
+hu.liu.pos = scan('positive-words.txt', what =
+                    'character', comment.char = ';')
+hu.liu.neg = scan('negative-words.txt', what =
+                    'character', comment.char = ';')
+
+
+pos.words <- c(hu.liu.pos)
+neg.words <- c(hu.liu.neg)
+
+#run the sentiment function on the text of the tweets
+boeing.scores <- score.sentiment(tweets_nodups_text,
+                                 pos.words, neg.words, .progress='none')
+
+
+
+#merge the results back with the original file
+boeing.score.merge <- merge(boeing.scores,
+                            tweets.nodups.df, by = 'text')
+
+#Histogram of sentiment for all tweets
+hist(boeing.score.merge$score,xlab=" ",main="Sentiment of
+tweets that mention Boeing", border="black",col="skyblue")
+
+#scatter plot of tweet date vs sentiment score
+plot(boeing.score.merge$Date, boeing.score.merge$score,
+     xlab = "Date", ylab = "Sentiment Score", main = "Sentiment of tweets
+that mention Boeing by Date")
+
+#taken from https://www.r-bloggers.com/twitter-sentimentanalysis-with-r/
+#total evaluation: positive / negative / neutral
+stat <- boeing.score.merge$score
+stat <- mutate(boeing.score.merge,
+               tweet=ifelse(boeing.score.merge$score > 0, 'positive',
+                            ifelse(boeing.score.merge$score < 0, 'negative', 'neutral')))
+by.tweet <- group_by(stat, tweet, Date)
+by.tweet <- dplyr::summarise(by.tweet, number=n())
+
+#Sentiment (positive, negative and neutral) over time
+ggplot(by.tweet, aes(Date, number)) +
+  geom_line(aes(group=tweet, color=tweet), size=2) +
+  geom_point(aes(group=tweet, color=tweet), size=4) +
+  theme(text = element_text(size=18), axis.text.x =
+          element_text(angle=90, vjust=1))
+
+#Read stock price CSV in
+stock_prices <- read.csv("BA.csv")
+
+#Format date so R knows this is a date field
+stock_prices$Date <- as.Date(stock_prices$Date,
+                             "%Y-%m-%d")
+Daily.change<- c(-2.13,-6.58,6.33,-2.52,-6.38)
+stock_prices<-cbind(stock_prices,Daily.change)
+
+#Left join the sentiment analysis with the stock prices
+tweet_stock <- left_join(boeing.score.merge,
+                         stock_prices, by = "Date")
+
+
+#eliminate rows with no daily change
+#eliminates weekend tweets
+weekday_tweet_stock <- subset(tweet_stock,
+                              !is.na(Daily.change))
+
+
+#Raw plot of sentiment score versus daily change in stock
+#price
+plot(jitter(weekday_tweet_stock$score),
+     weekday_tweet_stock$Daily.change, xlab = "Sentiment Score", ylab =
+       "Daily Change in Stock Price")
+
+#The below was modified from a LinkedIn PPT describing
+#sentiment analysis in R
+
+
+#Create indicator fields to flag tweets as positive,
+#negative or neutral based on sentiment score
+weekday_tweet_stock$pos <-
+  as.numeric(weekday_tweet_stock$score >= 1)
+weekday_tweet_stock$neg <-
+  as.numeric(weekday_tweet_stock$score <= -1)
+weekday_tweet_stock$neu <-
+  as.numeric(weekday_tweet_stock$score == 0)
+
+#Transform file from one row per tweet to one row per day
+#summarizing the total positive, negative and netural tweets per day 
+tweet_stock_df <- ddply(weekday_tweet_stock, c('Date',
+                                               'Daily.change'), plyr::summarise, pos.count = sum(pos),
+                        neg.count = sum(neg), neu.count = sum(neu))
+
+tweet_stock_df$all.count <- tweet_stock_df$pos.count +
+  tweet_stock_df$neg.count + tweet_stock_df$neu.count
+
+#calculate the percent of tweets that were negative on
+#each day
+tweet_stock_df$percent.neg <-
+  round((tweet_stock_df$neg.count / tweet_stock_df$all.count) * 100)
+
+#Simple correlation
+cor(tweet_stock_df$percent.neg,
+    tweet_stock_df$Daily.change, use = "complete")
+
+glm_model <- glm(tweet_stock_df$Daily.change ~
+                   tweet_stock_df$percent.neg)
+summary(glm_model)
+
+#plot of % positive tweets vs daily change in stock price
+#with linear regression line overlaid
+plot(tweet_stock_df$percent.neg,
+     tweet_stock_df$Daily.change, ylab = "Daily Change in Stock Price",
+     xlab = "Percent of Negative Tweets", main = "% Negative Tweets vs Daily
+Stock Price Change for Boeing")
+abline(glm_model)
+
+#calculate the percent of tweets that were positive on
+#each day
+tweet_stock_df$percent.pos <-
+  round((tweet_stock_df$pos.count / tweet_stock_df$all.count) * 100)
+
+#Simple correlation
+cor(tweet_stock_df$percent.pos,
+    tweet_stock_df$Daily.change, use = "complete")
+
+glm_model <- glm(tweet_stock_df$Daily.change ~
+                   tweet_stock_df$percent.pos)
+summary(glm_model)
+
+#plot of % positive tweets vs daily change in stock price
+#with linear regression line overlaid
+plot(tweet_stock_df$percent.pos,
+     tweet_stock_df$Daily.change, ylab = "Daily Change in Stock Price",
+     xlab = "Percent of Positive Tweets", main = "% Positive Tweets vs Daily
+Stock Price Change for Boeing")
+abline(glm_model)
 
 
                      
