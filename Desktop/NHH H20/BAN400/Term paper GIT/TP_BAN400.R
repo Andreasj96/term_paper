@@ -112,7 +112,7 @@ server <- function(input, output) {
       #req(input$search_key)
       #validate(need(toupper(input$search_key) %in% ticker_symbol),
       #       "Error: Please enter a vaild search key.")
-    
+      
       #name the extract_tweet function
       extract_tweet <- function(df){
         token <- create_token(app = "homework",
@@ -121,31 +121,32 @@ server <- function(input, output) {
                               access_token="1294199419097636864-uJ3M5RfVtYn9EZqVn0t6StWaVnWJxg",
                               access_secret="7UoNPbQsuN4wRmkLSlElWBuCW6j99FBBVl1OcpkUWHWWe" ) 
         #this is a private token expired on 20210102
-                           
-         usefual_search_key <- c( paste("$",toupper(df),sep = ""))
-                           
-                             
-         search_tweets(
-             usefual_search_key,                          #search key 
-             n = input$number_tweets,                      #number of tweets  shall be input$number_tweets
-             type = "recent",                             #type of tweets
-             include_rts = FALSE,                         #exclude retweet
-             geocode = NULL,
-             max_id = NULL,
-             parse = TRUE,
-             token = token,
-             retryonratelimit = FALSE,
-             verbose = TRUE,
-             lang = "en" )%>%
-           mutate(created_day = as.Date(created_at),    #created day
-                  created_time = hour(created_at),      #created time
-                  created_datetime = floor_date(created_at,'hour'))%>%   #created day&time
-           select(-created_at)                          #delete column created_at
-         }
+        
+        usefual_search_key <- c( paste("$",toupper(df),sep = ""))
+        
+        
+        search_tweets(
+          usefual_search_key,                          #search key 
+          n = input$number_tweets,                      #number of tweets  shall be input$number_tweets
+          type = "recent",                             #type of tweets
+          include_rts = FALSE,                         #exclude retweet
+          geocode = NULL,
+          max_id = NULL,
+          parse = TRUE,
+          token = token,
+          retryonratelimit = FALSE,
+          verbose = TRUE,
+          lang = "en" )%>%
+          mutate(created_day = as.Date(created_at),    #created day
+                 created_time = hour(created_at),      #created time
+                 created_datetime = 
+                   floor_date(created_at,'hour'))%>%   #created day&time
+          select(-created_at)                          #delete column created_at
+      }
       
       #then use the function
       extract_tweet(input$search_key)
-    
+      
     })
     
     
@@ -161,7 +162,7 @@ server <- function(input, output) {
     #  print(toupper(df) %in% ticker_symbol)
     #  
     #}
-    
+  
     #1.2 Plot function-how many tweets retrived per day
     plot_tweet_dt <- function(df){
       useful_df <- df %>%
@@ -187,7 +188,7 @@ server <- function(input, output) {
       
       print(plot)
     }
-    
+  
     #1.3 Preprocess function
     cleaning_tw_df <- function(df){
       extract_hashtag <- 
@@ -263,13 +264,13 @@ server <- function(input, output) {
                favourites_count, created_day, created_time, created_datetime)
       #replace text with cleaned text and select valuabe columns
     }
-    
-    #1.4 Plot function-wordcloud words appeared most frequently among tweets retrived
+  
+    #1.4 Plot function-wordcloud words appeared most frequently agmong tweets retrived
     make_tweet_wordcloud<- function(df){
       x <- 
         DocumentTermMatrix(Corpus(VectorSource(df$text)),
                            control = list(stemming = T,
-                                          bounds = list(global = c(5,input$number_tweets/2)))) %>%   
+                                          bounds = list(global = c(5,input$number_tweets/2)))) %>%   #500 = input.number_tweets
         as.matrix()%>%
         as.data.frame()%>%
         colSums()
@@ -291,7 +292,7 @@ server <- function(input, output) {
       }else{hourly_sentiment_analysis(df)
       }
     }
-    
+  
       #1.5.1 daily sentiment analysis base on different dictionary
       daily_sentiment_analysis <- function(df){
         if(input$dictionary == "Harvard"){
@@ -443,7 +444,7 @@ server <- function(input, output) {
         }
         }
       }
-      
+  
     #1.6 get MDA part of the lastest 10-k
     get_MDA <- function(df){
       useful_search_key <- toupper(df)
@@ -491,7 +492,7 @@ server <- function(input, output) {
         gsub("\\s(\\s*)", " ", .) %>%
         trimws()
     }
-    
+  
     #1.8 make a wordcloud
     make_MDA_wordcloud<- function(df){
       x <- 
@@ -511,72 +512,52 @@ server <- function(input, output) {
       print(plot_wordcloud)
       
     }
-    
+  
     #1.9 sentiment analysis based on LM
-    MDA_sentiment_LM <- function(df)
-      
-    #1.10 stock price during period same to retrived tweets'  
-    make_stock_price_withtimespan <- function(df){
-        
-        from_day <- min(cleaned_tweets()$created_day)-5
-        
-        to_day <- max(cleaned_tweets()$created_day)
-        
-        Stock_Price_withtimespan <- getSymbols(toupper(df),from=from_day,to=to_day, src='yahoo',auto.assign =F)
-        
-        plot1 <- chartSeries(Stock_Price_withtimespan)
-      }
-    
-    #1.10 stock price without time limit  
-    make_stock_price_withouttimespan<- function(df){
-      
-      Stock_Price_withouttimespan <-getSymbols(toupper(df), src='yahoo',auto.assign =F)
-      
-      plot2 <- chartSeries(Stock_Price_withouttimespan)
-      
-      
+    MDA_sentiment_LM <- function(df){
+      s <- analyzeSentiment(df)[c(1,8,9,10)]%>%
+        as.data.frame()
     }
-    
     
   #2 OUTPUT
     #2.1 tweets part
-    
+  
       #2.1.1 clean data
       cleaned_tweets <- reactive({
         cleaning_tw_df(extract_tweets())
-        })
-                 
+      })
+      
       #2.1.2 plot-how many tweets retrived per day&time
       output$tweets_number_plot <- renderPlot({
-             plot_tweet_dt(extract_tweets())
-        })
-         
+        plot_tweet_dt(extract_tweets())
+      })
+      
       #2.1.3 plot-wordcloud
       output$tweets_wordcloud_plot <- renderPlot({
-               make_tweet_wordcloud(cleaned_tweets())
-        })
-           
+        make_tweet_wordcloud(cleaned_tweets())
+      })
+      
       #2.1.4 plot-tweets sentiment
       output$tweets_sentiment_plot <- renderPlot({
-                 tweet_sentiment_analysis(cleaned_tweets())
-        })
-           
+        tweet_sentiment_analysis(cleaned_tweets())
+      })
+  
     #2.2 10-k MDA  part
-     
+  
       #2.2.1 get cleaned text of 10k MDA (works) 
       get_cleaned_MDAs <-reactive({
-         get_cleaned_MDA(get_MDA(input$search_key))})
-     
+        get_cleaned_MDA(get_MDA(input$search_key))})
+      
       #2.2.2 plot-10kMDA wordcloud (works)
       output$MDA_wordcloud_plot <- renderPlot({
-           make_MDA_wordcloud(get_cleaned_MDAs())
-         })
-       
+        make_MDA_wordcloud(get_cleaned_MDAs())
+      })
+      
       #2.2.3 plot-10kMDA sentiment(works)
       output$MDA_sentiment_table <- renderTable({
-             MDA_sentiment_LM(get_cleaned_MDAs())
-           })
-      
+        MDA_sentiment_LM(get_cleaned_MDAs())
+      })
+  
     
     #2.3 Real_time stock price part
       make_stock_price_withtimespan <- function(df){
