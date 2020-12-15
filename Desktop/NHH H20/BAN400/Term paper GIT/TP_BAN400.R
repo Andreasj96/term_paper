@@ -638,11 +638,6 @@ score.sentiment = function(sentences, pos.words,
 {
   require(plyr)
   require(stringr)
-  
-  # we got a vector of sentences. plyr will handle a list
-  #or a vector as an "l" for us
-  # we want a simple array of scores back, so we use "l"
-  #+ "a" + "ply" = laply:
   scores = laply(sentences, function(sentence, pos.words,
                                      neg.words) {
     
@@ -657,8 +652,7 @@ score.sentiment = function(sentences, pos.words,
     # split into words. str_split is in the stringr
     #package
     word.list = str_split(sentence, '\\s+')
-    # sometimes a list() is one level of hierarchy too
-    #much
+
     words = unlist(word.list)
     
     # compare our words to the dictionaries of positive &
@@ -684,9 +678,7 @@ score.sentiment = function(sentences, pos.words,
 }
 
 #The positive and negative words lexicons are stored in a
-#local director
-#Please see appendix/reference for more information on
-#origin
+#local directory. Txt files are supplied separately.
 
 
 hu.liu.pos = scan('positive-words.txt', what =
@@ -694,8 +686,7 @@ hu.liu.pos = scan('positive-words.txt', what =
 hu.liu.neg = scan('negative-words.txt', what =
                     'character', comment.char = ';')
 
-#Here we add some additional words that were discovered
-#from initial review of tweets
+
 pos.words <- c(hu.liu.pos)
 neg.words <- c(hu.liu.neg)
 
