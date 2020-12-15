@@ -583,7 +583,28 @@ MDA_sentiment_LM <- function(df){
 }
 
 
-
+    # obtain the stock price and vital indicator 
+    stock_price <- function(df) {
+      Quote <- function(code){
+        index <- match(code,your_stock)
+        temp <- lapply(your_stock,get)
+        return(temp[[index]])
+      }
+      your_stock <- c(toupper(df))
+      getSymbols(your_stock ,src="yahoo",from=Sys.Date()-90,to=Sys.Date())
+      plot <- quantmod::chartSeries(Quote(your_stock),up.col='red', dn.col='green',theme="white",
+                                    TA=c(addBBands(),addMACD(),addADX(),addVo()))
+      
+    }
+    # plot stock price plot         
+    output$stock_price_plot <- renderPlot({
+      stock_price(input$search_key)
+    })
+               
+    # plot-how many tweets retrived per day&time
+    output$tweets_number_plot <- renderPlot({
+           plot_tweet_dt(extract_tweets())
+      })
 
 
 
